@@ -187,6 +187,23 @@
         font-family: "IBM Plex Mono", monospace;
       }
 
+      details.disclosure summary {
+        cursor: pointer;
+        user-select: none;
+        color: #d6e8fb;
+        font-weight: 600;
+        margin-bottom: 0.7rem;
+      }
+
+      details.disclosure[open] summary {
+        margin-bottom: 0.9rem;
+      }
+
+      .disclosure-body {
+        display: grid;
+        gap: 0.9rem;
+      }
+
       .pill {
         display: inline-block;
         border: 1px solid var(--line);
@@ -244,6 +261,17 @@
         return Number(n).toFixed(digits);
       }
 
+      function stageStatusText(job) {
+        if (!job || job.status !== "running") return "";
+        if (!job.current_stage) return "";
+        const timings = job.stage_timings || {};
+        const stage = timings[job.current_stage] || {};
+        if (stage.started_at) {
+          return ` (${job.current_stage})`;
+        }
+        return ` (${job.current_stage})`;
+      }
+
       function tableCard(title, rows) {
         const body = rows
           .map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`)
@@ -257,8 +285,16 @@
       }
 
       function timelineCard(title, items, keys) {
+        return `
+          <article class="card wide">
+            ${timelineTable(title, items, keys)}
+          </article>
+        `;
+      }
+
+      function timelineTable(title, items, keys) {
         if (!items || items.length === 0) {
-          return `<article class="card wide"><h3>${title}</h3><div class="meta">No timeline entries.</div></article>`;
+          return `<h3>${title}</h3><div class="meta">No timeline entries.</div>`;
         }
         const header = keys.map((k) => `<th>${k}</th>`).join("");
         const body = items
@@ -266,12 +302,67 @@
           .map((item) => `<tr>${keys.map((k) => `<td>${item[k] ?? "-"}</td>`).join("")}</tr>`)
           .join("");
         return `
+          <h3>${title} <span class="meta">(${items.length} rows)</span></h3>
+          <table>
+            <thead><tr>${header}</tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        `;
+      }
+
+      function overlapSeconds(startA, endA, startB, endB) {
+        const left = Math.max(Number(startA) || 0, Number(startB) || 0);
+        const right = Math.min(Number(endA) || 0, Number(endB) || 0);
+        return Math.max(0, right - left);
+      }
+
+      function sectionDerivationRows(sections, tempoSegments, keySegments) {
+        if (!Array.isArray(sections) || sections.length === 0) return [];
+        return sections.map((sec, idx) => {
+          const tempoInputs = (tempoSegments || [])
+            .map((seg, i) => ({ seg, i, overlap: overlapSeconds(sec.start, sec.end, seg.start, seg.end) }))
+            .filter((x) => x.overlap > 0)
+            .map((x) => `T${x.i}[${fmt(x.seg.start, 2)}-${fmt(x.seg.end, 2)}] ${fmt(x.seg.bpm, 1)}bpm`)
+            .join(" | ");
+
+          const keyInputs = (keySegments || [])
+            .map((seg, i) => ({ seg, i, overlap: overlapSeconds(sec.start, sec.end, seg.start, seg.end) }))
+            .filter((x) => x.overlap > 0)
+            .map((x) => `K${x.i}[${fmt(x.seg.start, 2)}-${fmt(x.seg.end, 2)}] ${x.seg.key ?? "-"} ${x.seg.mode ?? ""}`.trim())
+            .join(" | ");
+
+          return {
+            section: `S${idx} [${fmt(sec.start, 2)}-${fmt(sec.end, 2)}]`,
+            combined: `${fmt(sec.tempo_bpm, 1)} bpm, ${sec.key ?? "-"} ${sec.mode ?? ""}`.trim(),
+            from_tempo: tempoInputs || "-",
+            from_key: keyInputs || "-",
+          };
+        });
+      }
+
+      function debugDisclosure(result, sections) {
+        const debug = result.debug || {};
+        const tempoSegments = Array.isArray(debug.original_tempo_segments) ? debug.original_tempo_segments : [];
+        const keySegments = Array.isArray(debug.original_key_segments) ? debug.original_key_segments : [];
+        if (tempoSegments.length === 0 && keySegments.length === 0) return "";
+        const derivationRows = sectionDerivationRows(sections, tempoSegments, keySegments);
+
+        return `
           <article class="card wide">
-            <h3>${title} <span class="meta">(${items.length} rows)</span></h3>
-            <table>
-              <thead><tr>${header}</tr></thead>
-              <tbody>${body}</tbody>
-            </table>
+            <details class="disclosure">
+              <summary>Debug: Original Segments</summary>
+              <div class="disclosure-body">
+                <section>
+                  ${timelineTable("Section Derivation (Combined <- Original Inputs)", derivationRows, ["section", "combined", "from_tempo", "from_key"])}
+                </section>
+                <section>
+                  ${timelineTable("Original Tempo Segments", tempoSegments, ["start", "end", "bpm", "confidence"])}
+                </section>
+                <section>
+                  ${timelineTable("Original Key Segments", keySegments, ["start", "end", "key", "mode", "confidence"])}
+                </section>
+              </div>
+            </details>
           </article>
         `;
       }
@@ -303,7 +394,8 @@
             </table>
           </article>
 
-          ${timelineCard("Sections", sections, ["start", "end", "tempo_bpm", "key", "mode", "change_reasons"])}
+          ${timelineCard("Sections", sections, ["start", "end", "tempo_bpm", "key", "mode", "tuning", "change_reasons"])}
+          ${debugDisclosure(result, sections)}
 
           <article class="card wide">
             <h3>Raw JSON</h3>
@@ -326,7 +418,7 @@
       async function poll(jobId) {
         try {
           const job = await fetchJson(`/v1/jobs/${jobId}`);
-          setStatus(`Job ${job.job_id} status: ${job.status}`);
+          setStatus(`Job ${job.job_id} status: ${job.status}${stageStatusText(job)}`);
 
           if (job.status === "succeeded") {
             if (pollTimer) clearInterval(pollTimer);

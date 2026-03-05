@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+from app.services import ingestion
+
+
+def test_yt_dlp_prefix_uses_path_lookup(monkeypatch):
+    monkeypatch.setattr(ingestion.shutil, "which", lambda _: "/usr/local/bin/yt-dlp")
+    prefix = ingestion._yt_dlp_cmd_prefix()
+    assert prefix == ["/usr/local/bin/yt-dlp"]
+
+
+def test_yt_dlp_prefix_uses_venv_neighbor(monkeypatch, tmp_path):
+    monkeypatch.setattr(ingestion.shutil, "which", lambda _: None)
+    fake_python = tmp_path / "python3.12"
+    fake_python.write_text("", encoding="utf-8")
+    neighbor = tmp_path / "yt-dlp"
+    neighbor.write_text("", encoding="utf-8")
+    monkeypatch.setattr(ingestion.sys, "executable", str(fake_python))
+
+    prefix = ingestion._yt_dlp_cmd_prefix()
+    assert prefix == [str(neighbor)]
+
+
+def test_yt_dlp_prefix_falls_back_to_module(monkeypatch, tmp_path):
+    monkeypatch.setattr(ingestion.shutil, "which", lambda _: None)
+    fake_python = tmp_path / "python3.12"
+    fake_python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(ingestion.sys, "executable", str(fake_python))
+
+    prefix = ingestion._yt_dlp_cmd_prefix()
+    assert prefix == [str(fake_python), "-m", "yt_dlp"]
+
+
+def test_youtube_cache_key_normalizes_watch_variants():
+    a = "https://www.youtube.com/watch?v=Ylgvl8d2NX4"
+    b = "https://www.youtube.com/watch?v=Ylgvl8d2NX4&list=RDYlgvl8d2NX4&start_radio=1"
+    c = "https://youtu.be/Ylgvl8d2NX4"
+    assert ingestion._youtube_cache_key(a) == ingestion._youtube_cache_key(b)
+    assert ingestion._youtube_cache_key(a) == ingestion._youtube_cache_key(c)

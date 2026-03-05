@@ -284,6 +284,33 @@ def _dominant_key_in_interval(segments: list[dict], start: float, end: float) ->
     return {"key": key, "mode": mode, "confidence": float(score / (total + 1e-9))}
 
 
+def _dominant_tempo_in_interval(segments: list[dict], start: float, end: float) -> dict:
+    if not segments:
+        return {"bpm": None, "confidence": 0.0}
+    weighted_bpm = 0.0
+    total_weight = 0.0
+    for seg in segments:
+        overlap_start = max(start, float(seg["start"]))
+        overlap_end = min(end, float(seg["end"]))
+        overlap = overlap_end - overlap_start
+        if overlap <= 0:
+            continue
+        conf = float(seg.get("confidence", 0.0))
+        weight = overlap * max(conf, 1e-6)
+        weighted_bpm += float(seg.get("bpm", 0.0)) * weight
+        total_weight += weight
+
+    if total_weight <= 0:
+        mid = (start + end) / 2.0
+        fallback = _value_at_time(segments, mid, ["bpm", "confidence"])
+        return {
+            "bpm": fallback.get("bpm"),
+            "confidence": float(fallback.get("confidence") or 0.0),
+        }
+
+    return {"bpm": float(weighted_bpm / total_weight), "confidence": float(min(1.0, total_weight))}
+
+
 def _value_at_time(segments: list[dict], t: float, value_keys: list[str]) -> dict:
     if not segments:
         return {k: None for k in value_keys}
@@ -338,8 +365,7 @@ def _build_sections(
         )
 
     if not events:
-        mid = max(0.0, duration_sec * 0.5)
-        bpm_info = _value_at_time(tempo_segments, mid, ["bpm"])
+        bpm_info = _dominant_tempo_in_interval(tempo_segments, 0.0, float(duration_sec))
         key_info = _dominant_key_in_interval(key_value_segments, 0.0, float(duration_sec))
         return [
             {
@@ -401,8 +427,7 @@ def _build_sections(
     for i in range(len(boundaries) - 1):
         start = boundaries[i]
         end = boundaries[i + 1]
-        mid = (start + end) / 2.0
-        bpm_info = _value_at_time(tempo_segments, mid, ["bpm"])
+        bpm_info = _dominant_tempo_in_interval(tempo_segments, start, end)
         key_info = _dominant_key_in_interval(key_value_segments, start, end)
         boundary_event = boundary_events.get(start)
         starts_with_tempo_change = bool(boundary_event["tempo_change"]) if boundary_event else False
@@ -427,6 +452,75 @@ def _build_sections(
             }
         )
     return overall
+
+
+def _tuning_cents_from_offset(offset_semitones: float) -> int:
+    cents = int(round(float(offset_semitones) * 100.0))
+    return max(-49, min(50, cents))
+
+
+def _apply_section_tuning(sections: list[dict], y: np.ndarray, sr: int) -> list[dict]:
+    if not sections:
+        return sections
+
+    try:
+        global_offset = float(librosa.estimate_tuning(y=y, sr=sr))
+    except Exception:  # noqa: BLE001
+        global_offset = 0.0
+    global_cents = _tuning_cents_from_offset(global_offset)
+
+    tuned: list[dict] = []
+    for seg in sections:
+        start = float(seg["start"])
+        end = float(seg["end"])
+        s = max(0, int(start * sr))
+        e = min(len(y), int(end * sr))
+        if e - s < max(2048, sr // 2):
+            cents = global_cents
+        else:
+            y_seg = y[s:e]
+            try:
+                seg_offset = float(librosa.estimate_tuning(y=y_seg, sr=sr))
+                cents = _tuning_cents_from_offset(seg_offset)
+            except Exception:  # noqa: BLE001
+                cents = global_cents
+        item = seg.copy()
+        item["tuning"] = int(cents)
+        tuned.append(item)
+    return tuned
+
+
+def _coalesce_sections_by_content(sections: list[dict], min_tempo_delta_bpm: float) -> list[dict]:
+    if not sections:
+        return []
+
+    merged: list[dict] = []
+    for sec in sections:
+        if not merged:
+            merged.append(sec.copy())
+            continue
+
+        prev = merged[-1]
+        same_key = prev.get("key") == sec.get("key") and prev.get("mode") == sec.get("mode")
+        prev_bpm = prev.get("tempo_bpm")
+        curr_bpm = sec.get("tempo_bpm")
+        if prev_bpm is None or curr_bpm is None:
+            tempo_close = True
+        else:
+            tempo_close = abs(float(prev_bpm) - float(curr_bpm)) < float(min_tempo_delta_bpm)
+
+        if same_key and tempo_close:
+            prev["end"] = sec["end"]
+            if prev_bpm is not None and curr_bpm is not None:
+                prev["tempo_bpm"] = float((float(prev_bpm) + float(curr_bpm)) / 2.0)
+            prev["starts_with_tempo_change"] = bool(prev.get("starts_with_tempo_change", False))
+            prev["starts_with_key_change"] = bool(prev.get("starts_with_key_change", False))
+            prev["change_reasons"] = prev.get("change_reasons", [])
+            prev["change_detail"] = prev.get("change_detail")
+        else:
+            merged.append(sec.copy())
+
+    return merged
 
 
 def _build_form_sections(duration: float, rms: np.ndarray, sr: int, hop_length: int) -> list[dict]:
@@ -613,6 +707,8 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
         duration_sec=duration,
         fuzz_sec=settings.segment_boundary_fuzz_sec,
     )
+    sections = _coalesce_sections_by_content(sections, settings.tempo_section_min_delta_bpm)
+    sections = _apply_section_tuning(sections, y=y, sr=sr)
     global_bpm = float(np.median([s["bpm"] for s in tempo_segments])) if tempo_segments else float(tempo)
     global_bpm_conf = (
         float(np.mean([s["confidence"] for s in tempo_segments])) if tempo_segments else 0.35
@@ -653,6 +749,10 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
             "bars_percussion": float(bars_4_4),
         },
         "sections": sections,
+        "debug": {
+            "original_tempo_segments": tempo_segments,
+            "original_key_segments": key_segments_raw,
+        },
         "form_sections": form_sections,
         "provenance": {
             "analysis_profile": profile,

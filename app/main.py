@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.repository import JobRepository
 from app.schemas import AnalyzeRequest, AnalyzeResultResponse, AnalyzeSubmissionResponse, JobStatusResponse
+from app.services.progress import read_progress
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 UI_FILE = Path(__file__).resolve().parent / "static" / "index.html"
@@ -61,12 +62,21 @@ def get_job(job_id: str, db: Session = Depends(get_db)) -> JobStatusResponse:
     if job.status.value == "failed":
         failure = {"code": job.error_code or "unknown_error", "message": job.error_message or "Unknown failure"}
 
+    progress = read_progress(job.id) or {}
+    stage_timings = progress.get("stages")
+    if isinstance(stage_timings, dict):
+        for stage_data in stage_timings.values():
+            if isinstance(stage_data, dict):
+                stage_data.pop("_started_perf", None)
+
     return JobStatusResponse(
         job_id=job.id,
         status=job.status.value,
         submitted_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
+        current_stage=progress.get("current_stage"),
+        stage_timings=stage_timings if isinstance(stage_timings, dict) else None,
         failure=failure,
     )
 

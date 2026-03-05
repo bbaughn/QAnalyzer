@@ -19,6 +19,8 @@ class JobStatusResponse(BaseModel):
     submitted_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    current_stage: str | None = None
+    stage_timings: dict[str, Any] | None = None
     failure: dict[str, str] | None = None
 
 

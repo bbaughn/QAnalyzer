@@ -5,7 +5,10 @@ import json
 import re
 import shutil
 import subprocess
+import sys
+from urllib.parse import parse_qs, urlparse
 from pathlib import Path
+from typing import Callable
 
 from app.config import settings
 from app.services.errors import MediaDecodeError, SourceError
@@ -46,7 +49,25 @@ def _normalize_to_wav(src: Path, dst: Path) -> None:
 
 
 def _youtube_cache_key(source: str) -> str:
-    return hashlib.sha256(source.strip().encode("utf-8")).hexdigest()
+    return hashlib.sha256(_canonical_youtube_source(source).encode("utf-8")).hexdigest()
+
+
+def _canonical_youtube_source(source: str) -> str:
+    s = source.strip()
+    parsed = urlparse(s)
+    host = parsed.netloc.lower()
+    path = parsed.path or ""
+    query = parse_qs(parsed.query)
+
+    if "youtube.com" in host:
+        video_id = query.get("v", [None])[0]
+        if video_id:
+            return f"https://www.youtube.com/watch?v={video_id}"
+    if host.endswith("youtu.be"):
+        video_id = path.strip("/").split("/", 1)[0]
+        if video_id:
+            return f"https://www.youtube.com/watch?v={video_id}"
+    return s
 
 
 def _youtube_cache_path(source: str) -> Path:
@@ -63,10 +84,27 @@ def _youtube_metadata_cache_path(source: str) -> Path:
     return cache_dir / f"{key}.json"
 
 
+def _yt_dlp_cmd_prefix() -> list[str]:
+    resolved = shutil.which("yt-dlp")
+    if resolved:
+        return [resolved]
+
+    venv_candidate = Path(sys.executable).with_name("yt-dlp")
+    if venv_candidate.exists():
+        return [str(venv_candidate)]
+
+    # Fall back to module invocation in the active Python environment.
+    return [sys.executable, "-m", "yt_dlp"]
+
+
 def _derive_artist_title(raw_title: str, uploader: str | None) -> tuple[str | None, str | None]:
     title = (raw_title or "").strip()
     if not title:
         return None, uploader
+
+    # Strip bracketed descriptors (e.g. [Official Video], [HD], [XYZ Records]).
+    title = re.sub(r"\[[^\]]*\]", "", title).strip()
+    title = re.sub(r"\s{2,}", " ", title).strip(" -|:")
 
     # If quoted text appears, treat the quoted text as title and the remainder as artist.
     quote_match = re.search(r"[\"“']([^\"”']+)[\"”']", title)
@@ -88,16 +126,21 @@ def _derive_artist_title(raw_title: str, uploader: str | None) -> tuple[str | No
 
 
 def _extract_youtube_metadata(source: str) -> dict:
-    cmd = [
-        "yt-dlp",
+    cmd = _yt_dlp_cmd_prefix() + [
         "--no-update",
+        "--no-playlist",
         "--extractor-args",
         "youtube:player_client=android,web",
         "--dump-single-json",
         "--no-download",
         source,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    except FileNotFoundError:
+        return {"title": None, "artist": None, "source_url": source}
+    except subprocess.TimeoutExpired:
+        return {"title": None, "artist": None, "source_url": source}
     if proc.returncode != 0:
         return {"title": None, "artist": None, "source_url": source}
 
@@ -119,21 +162,33 @@ def _extract_youtube_metadata(source: str) -> dict:
     }
 
 
-def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str, dict]:
+def ingest_source(
+    job_id: str,
+    source_type: str,
+    source: str,
+    stage_hook: Callable[[str], None] | None = None,
+) -> tuple[Path, str, dict]:
     job_dir = settings.storage_root / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     normalized_path = job_dir / "audio.wav"
 
     if source_type == "file":
+        if stage_hook:
+            stage_hook("download")
         src = Path(source)
         if not src.exists():
             raise SourceError(f"File source not found: {source}")
         copied = job_dir / src.name
         shutil.copy2(src, copied)
+        if stage_hook:
+            stage_hook("normalize")
         _normalize_to_wav(copied, normalized_path)
         return normalized_path, _sha256_file(normalized_path), {"title": src.stem, "artist": None, "source_url": source}
 
     if source_type == "youtube":
+        if stage_hook:
+            stage_hook("download")
+        yt_dlp_prefix = _yt_dlp_cmd_prefix()
         cache_path = _youtube_cache_path(source)
         meta_cache_path = _youtube_metadata_cache_path(source)
         if cache_path.exists():
@@ -152,12 +207,13 @@ def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str
                         meta_cache_path.write_text(json.dumps(metadata), encoding="utf-8")
                     except OSError:
                         pass
+            if stage_hook:
+                stage_hook("normalize")
             return normalized_path, _sha256_file(normalized_path), metadata
 
         downloaded = job_dir / "source.%(ext)s"
         attempts = [
-            [
-                "yt-dlp",
+            yt_dlp_prefix + [
                 "--no-update",
                 "--no-playlist",
                 "-f",
@@ -171,8 +227,7 @@ def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str
                 str(downloaded),
                 source,
             ],
-            [
-                "yt-dlp",
+            yt_dlp_prefix + [
                 "--no-update",
                 "--no-playlist",
                 "-f",
@@ -187,7 +242,14 @@ def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str
         ]
         last_error = ""
         for cmd in attempts:
-            proc = subprocess.run(cmd, capture_output=True, text=True)
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+            except FileNotFoundError:
+                last_error = (
+                    "yt-dlp executable was not found. "
+                    "Install yt-dlp or ensure it is available to the worker process."
+                )
+                continue
             if proc.returncode == 0:
                 last_error = ""
                 break
@@ -203,6 +265,8 @@ def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str
         if not candidates:
             raise SourceError("No media file produced by downloader")
         src_media = sorted(candidates, key=lambda p: p.stat().st_size, reverse=True)[0]
+        if stage_hook:
+            stage_hook("normalize")
         _normalize_to_wav(src_media, normalized_path)
         shutil.copy2(normalized_path, cache_path)
         metadata = _extract_youtube_metadata(source)
@@ -213,3 +277,12 @@ def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str
         return normalized_path, _sha256_file(normalized_path), metadata
 
     raise SourceError(f"Unsupported source_type: {source_type}")
+
+
+def cleanup_job_storage(job_id: str) -> None:
+    job_dir = settings.storage_root / job_id
+    if not job_dir.exists():
+        return
+    if not job_dir.is_dir():
+        return
+    shutil.rmtree(job_dir, ignore_errors=True)
