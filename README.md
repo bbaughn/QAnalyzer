@@ -50,7 +50,7 @@ curl http://localhost:8080/v1/results/871de222-348e-4f5a-be6d-83f1c249e8f9
 - `global.no_drums`
 - `global.bars_percussion`
 - `track.title`, `track.artist`
-- `sections` with change reasons (`tempo`, `key`, or both)
+- `sections` with `tuning` (cents, integer `-49..50`) and change reasons (`tempo`, `key`, or both)
 
 ## Notes
 - This is an internal prototype and does not enforce rights checks on YouTube URLs.

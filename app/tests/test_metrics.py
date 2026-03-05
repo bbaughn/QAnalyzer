@@ -4,13 +4,16 @@ import numpy as np
 
 from app.services.analysis import (
     _build_sections,
+    _coalesce_sections_by_content,
     _coalesce_tempo_segments,
     _confirm_key_segments,
     _dominant_key_label,
+    _dominant_tempo_in_interval,
     _find_harmonic_start,
     _local_tempo_segments,
     _percussion_presence,
     _swing_from_grid,
+    _tuning_cents_from_offset,
 )
 
 
@@ -177,3 +180,60 @@ def test_sections_use_raw_key_evidence_not_single_midpoint_guess():
     assert len(sections) == 1
     assert sections[0]["key"] == "D#"
     assert sections[0]["mode"] == "minor"
+
+
+def test_tuning_cents_conversion_and_clamp():
+    assert _tuning_cents_from_offset(0.0) == 0
+    assert _tuning_cents_from_offset(0.123) == 12
+    assert _tuning_cents_from_offset(-0.234) == -23
+    assert _tuning_cents_from_offset(0.9) == 50
+    assert _tuning_cents_from_offset(-0.9) == -49
+
+
+def test_section_coalesce_ignores_subthreshold_tempo_drift():
+    sections = [
+        {
+            "start": 0.0,
+            "end": 30.0,
+            "tempo_bpm": 120.1,
+            "key": "D#",
+            "mode": "minor",
+            "starts_with_tempo_change": False,
+            "starts_with_key_change": False,
+            "change_reasons": [],
+        },
+        {
+            "start": 30.0,
+            "end": 60.0,
+            "tempo_bpm": 121.6,
+            "key": "D#",
+            "mode": "minor",
+            "starts_with_tempo_change": True,
+            "starts_with_key_change": False,
+            "change_reasons": ["tempo"],
+        },
+        {
+            "start": 60.0,
+            "end": 90.0,
+            "tempo_bpm": 124.8,
+            "key": "D#",
+            "mode": "minor",
+            "starts_with_tempo_change": True,
+            "starts_with_key_change": False,
+            "change_reasons": ["tempo"],
+        },
+    ]
+    merged = _coalesce_sections_by_content(sections, min_tempo_delta_bpm=2.0)
+    assert len(merged) == 2
+    assert merged[0]["start"] == 0.0
+    assert merged[0]["end"] == 60.0
+    assert merged[1]["start"] == 60.0
+
+
+def test_dominant_tempo_in_interval_weighted():
+    tempo_segments = [
+        {"start": 0.0, "end": 50.0, "bpm": 120.0, "confidence": 0.9},
+        {"start": 50.0, "end": 100.0, "bpm": 124.0, "confidence": 0.9},
+    ]
+    t = _dominant_tempo_in_interval(tempo_segments, 0.0, 100.0)
+    assert 121.9 <= t["bpm"] <= 122.1
