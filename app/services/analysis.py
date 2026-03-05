@@ -624,19 +624,11 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
     rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
     percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
 
-    bars_4_4, bars_rounded, harmonic_start_time, harmonic_conf = _find_harmonic_start(
+    bars_4_4, _, _, _ = _find_harmonic_start(
         beat_times,
         chroma_sync,
         settings.harmonic_conf_threshold,
         settings.harmonic_consecutive_beats,
-    )
-
-    non_harmonic = _non_harmonic_segments(
-        beat_times,
-        chroma_sync,
-        percussive_ratio_per_frame,
-        hop_length=hop_length,
-        sr=sr,
     )
 
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
@@ -645,46 +637,23 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
         y_perc,
         sr,
     )
+    _ = percussion_presence, percussion_conf
 
     swing_feel, swing_confidence = _swing_from_grid(beat_times, onset_times)
+    _ = swing_confidence
 
     form_sections = _build_form_sections(duration, rms, sr, hop_length)
-
-    quality_flags = []
-    if beat_times.size < 16:
-        quality_flags.append("low_beat_density")
-    if global_key["confidence"] < 0.35:
-        quality_flags.append("low_key_confidence")
-    if harmonic_conf < settings.harmonic_conf_threshold:
-        quality_flags.append("uncertain_harmonic_start")
 
     elapsed = (datetime.utcnow() - start).total_seconds()
 
     return {
-        "track_info": {
-            "duration_sec": duration,
-            "sample_rate": sr,
-            "channels": 1,
-        },
         "global": {
-            "bpm": global_bpm,
-            "key": global_key["key"],
-            "mode": global_key["mode"],
-            "confidence": float(np.clip((global_bpm_conf + global_key["confidence"]) / 2, 0.0, 1.0)),
+            "swing": bool(swing_feel),
+            "no_drums": bool(low_percussion),
+            "bars_percussion": float(bars_4_4),
         },
         "sections": sections,
         "form_sections": form_sections,
-        "non_harmonic_segments": non_harmonic,
-        "percussion_only_intro_bars_4_4": bars_4_4,
-        "percussion_only_intro_bars_rounded": int(bars_rounded),
-        "harmonic_content_start_time_sec": harmonic_start_time,
-        "harmonic_start_confidence": harmonic_conf,
-        "percussion_presence": percussion_presence,
-        "low_percussion_track": low_percussion,
-        "percussion_confidence": percussion_conf,
-        "swing_feel": swing_feel,
-        "swing_confidence": swing_confidence,
-        "quality_flags": quality_flags,
         "provenance": {
             "analysis_profile": profile,
             "algorithm_versions": {
@@ -701,6 +670,17 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
                 "key_change_conf_margin": settings.key_change_conf_margin,
                 "key_change_min_confidence": settings.key_change_min_confidence,
                 "segment_boundary_fuzz_sec": settings.segment_boundary_fuzz_sec,
+            },
+            "track_info": {
+                "duration_sec": duration,
+                "sample_rate": sr,
+                "channels": 1,
+            },
+            "global_estimates_internal": {
+                "bpm": global_bpm,
+                "key": global_key["key"],
+                "mode": global_key["mode"],
+                "confidence": float(np.clip((global_bpm_conf + global_key["confidence"]) / 2, 0.0, 1.0)),
             },
             "run_duration_sec": elapsed,
         },

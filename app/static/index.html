@@ -276,58 +276,23 @@
 
       function renderResult(result, jobId) {
         const global = result.global || {};
-        const track = result.track_info || {};
         const sections = Array.isArray(result.sections)
           ? result.sections
           : (Array.isArray(result.overall_segments) ? result.overall_segments : []);
 
-        const quality = (result.quality_flags || []).map((f) => `<span class="pill">${f}</span>`).join("") || "<span class='meta'>none</span>";
-
         resultsEl.innerHTML = `
-          <article class="card">
-            <h3>Primary Metric</h3>
-            <div class="kpi">${fmt(result.percussion_only_intro_bars_4_4)} bars</div>
-            <div class="meta">4/4 normalized percussion-only intro</div>
-          </article>
-
           <article class="card">
             <h3>Global Musical Stats</h3>
             <table>
               <tbody>
-                <tr><td>BPM</td><td>${fmt(global.bpm)}</td></tr>
-                <tr><td>Key</td><td>${global.key || "-"} ${global.mode || ""}</td></tr>
-                <tr><td>Global Confidence</td><td>${fmt(global.confidence)}</td></tr>
-                <tr><td>Swing Feel</td><td>${result.swing_feel ? "true" : "false"} (${fmt(result.swing_confidence)})</td></tr>
+                <tr><td>Swing</td><td>${global.swing ? "true" : "false"}</td></tr>
+                <tr><td>No Drums</td><td>${global.no_drums ? "true" : "false"}</td></tr>
+                <tr><td>Bars Percussion</td><td>${fmt(global.bars_percussion)}</td></tr>
               </tbody>
             </table>
-          </article>
-
-          <article class="card">
-            <h3>Percussion/Harmony Detection</h3>
-            <table>
-              <tbody>
-                <tr><td>Percussion Presence</td><td>${result.percussion_presence || "-"}</td></tr>
-                <tr><td>Low Percussion Track</td><td>${result.low_percussion_track ? "true" : "false"}</td></tr>
-                <tr><td>Harmonic Start (sec)</td><td>${fmt(result.harmonic_content_start_time_sec)}</td></tr>
-                <tr><td>Harmonic Start Conf.</td><td>${fmt(result.harmonic_start_confidence)}</td></tr>
-              </tbody>
-            </table>
-          </article>
-
-          ${tableCard("Track Metadata", [
-            ["Duration (sec)", fmt(track.duration_sec)],
-            ["Sample Rate", track.sample_rate ?? "-"],
-            ["Channels", track.channels ?? "-"],
-            ["Job ID", jobId],
-          ])}
-
-          <article class="card wide">
-            <h3>Quality Flags</h3>
-            ${quality}
           </article>
 
           ${timelineCard("Sections", sections, ["start", "end", "tempo_bpm", "key", "mode", "change_reasons"])}
-          ${timelineCard("Non-Harmonic Segments", result.non_harmonic_segments || [], ["start", "end", "reason", "confidence"])}
 
           <article class="card wide">
             <h3>Raw JSON</h3>

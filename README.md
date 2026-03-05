@@ -6,12 +6,9 @@ Async internal-use analysis service for EDM-oriented track metadata and timeline
 - `POST /v1/analyze` queue job from YouTube URL or local file
 - `GET /v1/jobs/{job_id}` status
 - `GET /v1/results/{job_id}` structured JSON result
-- Global BPM/key + unified `sections` timeline
+- Global stats: `swing`, `no_drums`, `bars_percussion`
+- Unified `sections` timeline
 - EDM-oriented `form_sections` mapping
-- Non-harmonic segment detection
-- `percussion_only_intro_bars_4_4` primary metric
-- Low/no percussion detection
-- Swing feel binary detection with confidence
 
 ## Requirements
 - Python 3.12+
@@ -48,10 +45,9 @@ curl http://localhost:8080/v1/results/871de222-348e-4f5a-be6d-83f1c249e8f9
 ```
 
 ## Output highlights
-- `percussion_only_intro_bars_4_4`
-- `harmonic_content_start_time_sec`
-- `percussion_presence`, `low_percussion_track`
-- `swing_feel`, `swing_confidence`
+- `global.swing`
+- `global.no_drums`
+- `global.bars_percussion`
 - `sections` with change reasons (`tempo`, `key`, or both)
 
 ## Notes

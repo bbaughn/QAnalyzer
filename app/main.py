@@ -10,12 +10,6 @@ from app.config import settings
 from app.database import SessionLocal, init_db
 from app.repository import JobRepository
 from app.schemas import AnalyzeRequest, AnalyzeResultResponse, AnalyzeSubmissionResponse, JobStatusResponse
-from app.services.analysis import (
-    _build_sections,
-    _coalesce_key_segments_same_label,
-    _coalesce_tempo_segments,
-    _confirm_key_segments,
-)
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 UI_FILE = Path(__file__).resolve().parent / "static" / "index.html"
@@ -85,59 +79,4 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> AnalyzeResultRespo
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status.value != "succeeded":
         raise HTTPException(status_code=409, detail=f"Job status is {job.status.value}")
-    result = dict(job.result_json or {})
-    raw_tempo = result.get("tempo_segments")
-    confirmed_tempo = []
-    if isinstance(raw_tempo, list):
-        confirmed_tempo = _coalesce_tempo_segments(raw_tempo, settings.tempo_section_min_delta_bpm)
-    raw_keys = result.get("key_segments_raw")
-    confirmed_keys = []
-    if isinstance(raw_keys, list) and raw_keys:
-        confirmed_keys = _confirm_key_segments(_coalesce_key_segments_same_label(raw_keys))
-    else:
-        raw_or_confirmed = result.get("key_segments")
-        if isinstance(raw_or_confirmed, list):
-            confirmed_keys = _confirm_key_segments(raw_or_confirmed)
-    key_value_segments = _coalesce_key_segments_same_label(raw_keys) if isinstance(raw_keys, list) else confirmed_keys
-
-    legacy_sections = result.get("sections")
-    if isinstance(legacy_sections, list) and legacy_sections:
-        first = legacy_sections[0]
-        if isinstance(first, dict) and "label" in first and "tempo_bpm" not in first:
-            result["form_sections"] = legacy_sections
-            result.pop("sections", None)
-
-    if "sections" not in result:
-        legacy_overall = result.get("overall_segments")
-        if isinstance(legacy_overall, list):
-            result["sections"] = legacy_overall
-        else:
-            duration = float(result.get("track_info", {}).get("duration_sec", 0.0))
-            result["sections"] = _build_sections(
-                tempo_segments=confirmed_tempo,
-                key_segments=confirmed_keys,
-                key_value_segments=key_value_segments,
-                duration_sec=duration,
-                fuzz_sec=settings.segment_boundary_fuzz_sec,
-            )
-
-    if "form_sections" not in result and isinstance(legacy_sections, list):
-        first = legacy_sections[0] if legacy_sections else {}
-        if isinstance(first, dict) and "label" in first:
-            result["form_sections"] = legacy_sections
-
-    if not isinstance(result.get("sections"), list):
-        duration = float(result.get("track_info", {}).get("duration_sec", 0.0))
-        result["sections"] = _build_sections(
-            tempo_segments=confirmed_tempo,
-            key_segments=confirmed_keys,
-            key_value_segments=key_value_segments,
-            duration_sec=duration,
-            fuzz_sec=settings.segment_boundary_fuzz_sec,
-        )
-
-    result.pop("tempo_segments", None)
-    result.pop("key_segments", None)
-    result.pop("key_segments_raw", None)
-    result.pop("overall_segments", None)
-    return AnalyzeResultResponse(job_id=job.id, status="succeeded", result=result)
+    return AnalyzeResultResponse(job_id=job.id, status="succeeded", result=job.result_json or {})
