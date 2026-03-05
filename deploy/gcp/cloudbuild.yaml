@@ -1,0 +1,8 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE_URI}", "."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_IMAGE_URI}"]
+
+substitutions:
+  _IMAGE_URI: us-central1-docker.pkg.dev/$PROJECT_ID/edm-analysis/edm-analysis:latest

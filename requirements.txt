@@ -1,0 +1,11 @@
+fastapi==0.115.14
+uvicorn[standard]==0.35.0
+sqlalchemy==2.0.43
+pydantic==2.11.7
+numpy==1.26.4
+scipy==1.11.4
+librosa==0.10.2.post1
+numba==0.59.1
+yt-dlp>=2025.08.27
+python-multipart==0.0.20
+pytest==8.4.1

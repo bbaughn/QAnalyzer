@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EDM Analysis Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0c1117;
+        --panel: rgba(14, 23, 32, 0.84);
+        --ink: #f1f6fb;
+        --muted: #96a8ba;
+        --line: rgba(148, 179, 207, 0.24);
+        --teal: #24d3b5;
+        --orange: #ff9d42;
+        --red: #ff6a63;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(1200px 600px at 80% -10%, rgba(36, 211, 181, 0.2), transparent 55%),
+          radial-gradient(1000px 500px at -10% 20%, rgba(255, 157, 66, 0.16), transparent 60%),
+          linear-gradient(170deg, #0b1015 0%, #111a23 100%);
+        color: var(--ink);
+        font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+      }
+
+      .wrap {
+        width: min(1080px, 94vw);
+        margin: 2.25rem auto;
+        display: grid;
+        gap: 1rem;
+      }
+
+      .hero {
+        padding: 1.2rem;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        backdrop-filter: blur(10px);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.4rem, 2.2vw, 2rem);
+        letter-spacing: 0.01em;
+      }
+
+      .sub {
+        margin: 0.4rem 0 0;
+        color: var(--muted);
+        font-size: 0.96rem;
+      }
+
+      .submit-row {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.75rem;
+      }
+
+      input[type="url"] {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(8, 14, 20, 0.85);
+        color: var(--ink);
+        font-size: 0.95rem;
+        padding: 0.85rem 0.95rem;
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--teal), #5fd2ff 65%);
+        color: #001823;
+        padding: 0.85rem 1.1rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.58;
+        cursor: wait;
+      }
+
+      .status {
+        margin-top: 0.9rem;
+        padding: 0.75rem 0.9rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: rgba(9, 16, 24, 0.84);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.9rem;
+      }
+
+      .status.failed {
+        border-color: rgba(255, 106, 99, 0.45);
+        color: #ffd0cc;
+      }
+
+      .status.ok {
+        border-color: rgba(36, 211, 181, 0.45);
+        color: #c7fff2;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 1rem;
+      }
+
+      .card {
+        grid-column: span 4;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+        padding: 0.85rem;
+      }
+
+      .card.wide {
+        grid-column: span 12;
+      }
+
+      .card h3 {
+        margin: 0 0 0.6rem;
+        font-size: 0.95rem;
+        color: #d6e8fb;
+      }
+
+      .kpi {
+        font-size: 1.8rem;
+        font-weight: 700;
+      }
+
+      .meta {
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        padding: 0.45rem 0.3rem;
+        font-size: 0.87rem;
+      }
+
+      th {
+        color: #b8d2e8;
+      }
+
+      td {
+        color: #e5f1fc;
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 300px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(6, 11, 18, 0.86);
+        padding: 0.75rem;
+        font-size: 0.8rem;
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      .pill {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 0.76rem;
+        padding: 0.15rem 0.6rem;
+        margin-right: 0.35rem;
+      }
+
+      @media (max-width: 900px) {
+        .card,
+        .card.wide {
+          grid-column: span 12;
+        }
+
+        .submit-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <h1>EDM Analysis Console</h1>
+        <p class="sub">Paste a YouTube URL, submit analysis, and this page will auto-refresh status until the full report is ready.</p>
+        <div class="submit-row">
+          <input id="source" type="url" placeholder="https://www.youtube.com/watch?v=..." />
+          <button id="submitBtn">Analyze Track</button>
+        </div>
+        <div id="status" class="status">Waiting for input.</div>
+      </section>
+
+      <section id="results" class="grid" style="display: none"></section>
+    </main>
+
+    <script>
+      const sourceInput = document.getElementById("source");
+      const submitBtn = document.getElementById("submitBtn");
+      const statusEl = document.getElementById("status");
+      const resultsEl = document.getElementById("results");
+
+      let activeJobId = null;
+      let pollTimer = null;
+
+      function setStatus(text, kind = "") {
+        statusEl.className = `status ${kind}`.trim();
+        statusEl.textContent = text;
+      }
+
+      function fmt(n, digits = 2) {
+        if (n === null || n === undefined || Number.isNaN(Number(n))) return "-";
+        return Number(n).toFixed(digits);
+      }
+
+      function tableCard(title, rows) {
+        const body = rows
+          .map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`)
+          .join("");
+        return `
+          <article class="card">
+            <h3>${title}</h3>
+            <table><tbody>${body}</tbody></table>
+          </article>
+        `;
+      }
+
+      function timelineCard(title, items, keys) {
+        if (!items || items.length === 0) {
+          return `<article class="card wide"><h3>${title}</h3><div class="meta">No timeline entries.</div></article>`;
+        }
+        const header = keys.map((k) => `<th>${k}</th>`).join("");
+        const body = items
+          .slice(0, 50)
+          .map((item) => `<tr>${keys.map((k) => `<td>${item[k] ?? "-"}</td>`).join("")}</tr>`)
+          .join("");
+        return `
+          <article class="card wide">
+            <h3>${title} <span class="meta">(${items.length} rows)</span></h3>
+            <table>
+              <thead><tr>${header}</tr></thead>
+              <tbody>${body}</tbody>
+            </table>
+          </article>
+        `;
+      }
+
+      function renderResult(result, jobId) {
+        const global = result.global || {};
+        const track = result.track_info || {};
+        const sections = Array.isArray(result.sections)
+          ? result.sections
+          : (Array.isArray(result.overall_segments) ? result.overall_segments : []);
+
+        const quality = (result.quality_flags || []).map((f) => `<span class="pill">${f}</span>`).join("") || "<span class='meta'>none</span>";
+
+        resultsEl.innerHTML = `
+          <article class="card">
+            <h3>Primary Metric</h3>
+            <div class="kpi">${fmt(result.percussion_only_intro_bars_4_4)} bars</div>
+            <div class="meta">4/4 normalized percussion-only intro</div>
+          </article>
+
+          <article class="card">
+            <h3>Global Musical Stats</h3>
+            <table>
+              <tbody>
+                <tr><td>BPM</td><td>${fmt(global.bpm)}</td></tr>
+                <tr><td>Key</td><td>${global.key || "-"} ${global.mode || ""}</td></tr>
+                <tr><td>Global Confidence</td><td>${fmt(global.confidence)}</td></tr>
+                <tr><td>Swing Feel</td><td>${result.swing_feel ? "true" : "false"} (${fmt(result.swing_confidence)})</td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="card">
+            <h3>Percussion/Harmony Detection</h3>
+            <table>
+              <tbody>
+                <tr><td>Percussion Presence</td><td>${result.percussion_presence || "-"}</td></tr>
+                <tr><td>Low Percussion Track</td><td>${result.low_percussion_track ? "true" : "false"}</td></tr>
+                <tr><td>Harmonic Start (sec)</td><td>${fmt(result.harmonic_content_start_time_sec)}</td></tr>
+                <tr><td>Harmonic Start Conf.</td><td>${fmt(result.harmonic_start_confidence)}</td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          ${tableCard("Track Metadata", [
+            ["Duration (sec)", fmt(track.duration_sec)],
+            ["Sample Rate", track.sample_rate ?? "-"],
+            ["Channels", track.channels ?? "-"],
+            ["Job ID", jobId],
+          ])}
+
+          <article class="card wide">
+            <h3>Quality Flags</h3>
+            ${quality}
+          </article>
+
+          ${timelineCard("Sections", sections, ["start", "end", "tempo_bpm", "key", "mode", "change_reasons"])}
+          ${timelineCard("Non-Harmonic Segments", result.non_harmonic_segments || [], ["start", "end", "reason", "confidence"])}
+
+          <article class="card wide">
+            <h3>Raw JSON</h3>
+            <pre>${JSON.stringify(result, null, 2)}</pre>
+          </article>
+        `;
+        resultsEl.style.display = "grid";
+      }
+
+      async function fetchJson(url, options) {
+        const res = await fetch(url, options);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = data?.detail ? `: ${data.detail}` : "";
+          throw new Error(`${res.status} ${res.statusText}${detail}`);
+        }
+        return data;
+      }
+
+      async function poll(jobId) {
+        try {
+          const job = await fetchJson(`/v1/jobs/${jobId}`);
+          setStatus(`Job ${job.job_id} status: ${job.status}`);
+
+          if (job.status === "succeeded") {
+            if (pollTimer) clearInterval(pollTimer);
+            const result = await fetchJson(`/v1/results/${jobId}`);
+            setStatus(`Job ${job.job_id} complete. Rendering results.`, "ok");
+            renderResult(result.result, jobId);
+            submitBtn.disabled = false;
+            return;
+          }
+
+          if (job.status === "failed") {
+            if (pollTimer) clearInterval(pollTimer);
+            const msg = job.failure ? `${job.failure.code}: ${job.failure.message}` : "Unknown failure";
+            setStatus(`Job ${job.job_id} failed - ${msg}`, "failed");
+            submitBtn.disabled = false;
+          }
+        } catch (err) {
+          if (pollTimer) clearInterval(pollTimer);
+          setStatus(`Polling error: ${err.message}`, "failed");
+          submitBtn.disabled = false;
+        }
+      }
+
+      async function submit() {
+        const source = sourceInput.value.trim();
+        if (!source) {
+          setStatus("Please paste a YouTube URL.", "failed");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        resultsEl.style.display = "none";
+        setStatus("Submitting analysis job...");
+
+        try {
+          const submission = await fetchJson("/v1/analyze", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              source_type: "youtube",
+              source,
+              analysis_profile: "edm_v1",
+              options: {},
+            }),
+          });
+
+          activeJobId = submission.job_id;
+          setStatus(`Job queued: ${activeJobId}. Waiting for worker...`);
+
+          if (pollTimer) clearInterval(pollTimer);
+          await poll(activeJobId);
+          pollTimer = setInterval(() => poll(activeJobId), 5000);
+        } catch (err) {
+          setStatus(`Submit failed: ${err.message}`, "failed");
+          submitBtn.disabled = false;
+        }
+      }
+
+      submitBtn.addEventListener("click", submit);
+      sourceInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") submit();
+      });
+    </script>
+  </body>
+</html>
