@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -43,7 +45,81 @@ def _normalize_to_wav(src: Path, dst: Path) -> None:
     )
 
 
-def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str]:
+def _youtube_cache_key(source: str) -> str:
+    return hashlib.sha256(source.strip().encode("utf-8")).hexdigest()
+
+
+def _youtube_cache_path(source: str) -> Path:
+    key = _youtube_cache_key(source)
+    cache_dir = settings.storage_root / "_youtube_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"{key}.wav"
+
+
+def _youtube_metadata_cache_path(source: str) -> Path:
+    key = _youtube_cache_key(source)
+    cache_dir = settings.storage_root / "_youtube_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"{key}.json"
+
+
+def _derive_artist_title(raw_title: str, uploader: str | None) -> tuple[str | None, str | None]:
+    title = (raw_title or "").strip()
+    if not title:
+        return None, uploader
+
+    # If quoted text appears, treat the quoted text as title and the remainder as artist.
+    quote_match = re.search(r"[\"“']([^\"”']+)[\"”']", title)
+    if quote_match:
+        quoted = quote_match.group(1).strip()
+        remainder = re.sub(r"[\"“']([^\"”']+)[\"”']", "", title).strip(" -|:")
+        artist = remainder if remainder else uploader
+        return quoted or None, artist or None
+
+    # Common pattern: Artist - Title
+    if " - " in title:
+        left, right = title.split(" - ", 1)
+        left = left.strip()
+        right = right.strip()
+        if left and right:
+            return right, left
+
+    return title, uploader
+
+
+def _extract_youtube_metadata(source: str) -> dict:
+    cmd = [
+        "yt-dlp",
+        "--no-update",
+        "--extractor-args",
+        "youtube:player_client=android,web",
+        "--dump-single-json",
+        "--no-download",
+        source,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return {"title": None, "artist": None, "source_url": source}
+
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return {"title": None, "artist": None, "source_url": source}
+
+    raw_title = (data.get("track") or data.get("title") or "").strip()
+    artist = (data.get("artist") or data.get("creator") or data.get("uploader") or data.get("channel"))
+    parsed_title, parsed_artist = _derive_artist_title(raw_title, artist)
+    return {
+        "title": parsed_title,
+        "artist": parsed_artist,
+        "source_url": source,
+        "youtube_id": data.get("id"),
+        "uploader": data.get("uploader"),
+        "channel": data.get("channel"),
+    }
+
+
+def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str, dict]:
     job_dir = settings.storage_root / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     normalized_path = job_dir / "audio.wav"
@@ -55,9 +131,29 @@ def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str
         copied = job_dir / src.name
         shutil.copy2(src, copied)
         _normalize_to_wav(copied, normalized_path)
-        return normalized_path, _sha256_file(normalized_path)
+        return normalized_path, _sha256_file(normalized_path), {"title": src.stem, "artist": None, "source_url": source}
 
     if source_type == "youtube":
+        cache_path = _youtube_cache_path(source)
+        meta_cache_path = _youtube_metadata_cache_path(source)
+        if cache_path.exists():
+            shutil.copy2(cache_path, normalized_path)
+            metadata = {"title": None, "artist": None, "source_url": source}
+            if meta_cache_path.exists():
+                try:
+                    metadata = json.loads(meta_cache_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    metadata = {"title": None, "artist": None, "source_url": source}
+            if not metadata.get("title") and not metadata.get("artist"):
+                refreshed = _extract_youtube_metadata(source)
+                if refreshed.get("title") or refreshed.get("artist"):
+                    metadata = refreshed
+                    try:
+                        meta_cache_path.write_text(json.dumps(metadata), encoding="utf-8")
+                    except OSError:
+                        pass
+            return normalized_path, _sha256_file(normalized_path), metadata
+
         downloaded = job_dir / "source.%(ext)s"
         attempts = [
             [
@@ -108,6 +204,12 @@ def ingest_source(job_id: str, source_type: str, source: str) -> tuple[Path, str
             raise SourceError("No media file produced by downloader")
         src_media = sorted(candidates, key=lambda p: p.stat().st_size, reverse=True)[0]
         _normalize_to_wav(src_media, normalized_path)
-        return normalized_path, _sha256_file(normalized_path)
+        shutil.copy2(normalized_path, cache_path)
+        metadata = _extract_youtube_metadata(source)
+        try:
+            meta_cache_path.write_text(json.dumps(metadata), encoding="utf-8")
+        except OSError:
+            pass
+        return normalized_path, _sha256_file(normalized_path), metadata
 
     raise SourceError(f"Unsupported source_type: {source_type}")

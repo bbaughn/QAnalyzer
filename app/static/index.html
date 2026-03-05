@@ -228,6 +228,8 @@
       const submitBtn = document.getElementById("submitBtn");
       const statusEl = document.getElementById("status");
       const resultsEl = document.getElementById("results");
+      const heroSubDefault = "Paste a YouTube URL, submit analysis, and this page will auto-refresh status until the full report is ready.";
+      const heroSubEl = document.querySelector(".sub");
 
       let activeJobId = null;
       let pollTimer = null;
@@ -279,6 +281,15 @@
         const sections = Array.isArray(result.sections)
           ? result.sections
           : (Array.isArray(result.overall_segments) ? result.overall_segments : []);
+        const track = result.track || {};
+        if (track.title || track.artist) {
+          const pieces = [];
+          if (track.artist) pieces.push(track.artist);
+          if (track.title) pieces.push(track.title);
+          heroSubEl.textContent = pieces.join(" - ");
+        } else {
+          heroSubEl.textContent = heroSubDefault;
+        }
 
         resultsEl.innerHTML = `
           <article class="card">

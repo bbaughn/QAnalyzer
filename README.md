@@ -8,6 +8,7 @@ Async internal-use analysis service for EDM-oriented track metadata and timeline
 - `GET /v1/results/{job_id}` structured JSON result
 - Global stats: `swing`, `no_drums`, `bars_percussion`
 - Unified `sections` timeline
+- Track metadata from source: `track.title`, `track.artist`
 - EDM-oriented `form_sections` mapping
 
 ## Requirements
@@ -48,11 +49,14 @@ curl http://localhost:8080/v1/results/871de222-348e-4f5a-be6d-83f1c249e8f9
 - `global.swing`
 - `global.no_drums`
 - `global.bars_percussion`
+- `track.title`, `track.artist`
 - `sections` with change reasons (`tempo`, `key`, or both)
 
 ## Notes
 - This is an internal prototype and does not enforce rights checks on YouTube URLs.
 - Audio artifacts should be configured with TTL cleanup in production.
+- Local runs reuse cached normalized YouTube audio under `data/storage/_youtube_cache` to avoid re-fetching the same URL.
+- Local runs cache YouTube metadata (`title`/`artist`) alongside audio in `data/storage/_youtube_cache` to avoid page refetch on repeat runs.
 - If your project folder is synced (Dropbox/iCloud), use the allowlist watcher above (`--reload-include 'app/**/*.py'`) so `.venv` and synced metadata cannot trigger reload loops.
 - If YouTube jobs fail with format/signature errors, update downloader tooling: `.venv/bin/python -m pip install -U yt-dlp`.
 - Segment boundaries use fuzzy matching across tempo/key changes (`SEGMENT_BOUNDARY_FUZZ_SEC`, default `0.75`).

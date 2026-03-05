@@ -20,8 +20,13 @@ def process_one_job() -> bool:
             return False
 
         try:
-            audio_path, sha = ingest_source(job.id, job.source_type, job.source)
+            audio_path, sha, source_meta = ingest_source(job.id, job.source_type, job.source)
             result = analyze_audio_file(str(audio_path), profile=job.analysis_profile)
+            result["track"] = {
+                "title": source_meta.get("title"),
+                "artist": source_meta.get("artist"),
+                "source_url": source_meta.get("source_url"),
+            }
             repo.mark_succeeded(job.id, result, sha)
         except SourceError as e:
             repo.mark_failed(job.id, "source_error", str(e))
