@@ -643,7 +643,7 @@ def _find_harmonic_start(
     for i in range(0, max(1, tonal_conf_arr.size - consecutive + 1)):
         tonal_window = tonal_conf_arr[i : i + consecutive]
         perc_window = perc_arr[i : i + consecutive]
-        if np.all(tonal_window >= threshold) and np.all(perc_window < perc_threshold):
+        if np.all(tonal_window >= threshold) and np.mean(perc_window) < perc_threshold:
             start_idx = i
             break
     start_time = float(beat_times[min(start_idx, beat_times.size - 1)])
@@ -651,7 +651,7 @@ def _find_harmonic_start(
 
     beats_before = max(0, start_idx)
     bars_4_4 = float(beats_before / 4.0)
-    return bars_4_4, round(bars_4_4), start_time, start_conf
+    return bars_4_4, round(bars_4_4), start_time, start_conf, tonal_conf_arr.tolist(), perc_arr.tolist()
 
 
 def _non_harmonic_segments(
@@ -793,7 +793,7 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
     rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
     percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
 
-    bars_4_4, _, _, _ = _find_harmonic_start(
+    bars_4_4, _, _, _, beat_tonal_conf, beat_perc_ratio = _find_harmonic_start(
         beat_times,
         chroma_sync,
         percussive_ratio_per_frame,
@@ -830,6 +830,8 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
             "raw_tempo_segments": raw_tempo_segments,
             "tempo_segments": tempo_segments,
             "raw_key_segments": key_segments_raw,
+            "beat_tonal_conf": beat_tonal_conf,
+            "beat_perc_ratio": beat_perc_ratio,
             "collapsed_key_segments": [
                 {
                     **seg,

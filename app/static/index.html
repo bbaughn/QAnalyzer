@@ -349,6 +349,14 @@
         if (tempoSegments.length === 0 && rawKey.length === 0) return "";
         const derivationRows = sectionDerivationRows(sections, tempoSegments, rawKey);
 
+        const tonalConf = Array.isArray(debug.beat_tonal_conf) ? debug.beat_tonal_conf : [];
+        const percRatio = Array.isArray(debug.beat_perc_ratio) ? debug.beat_perc_ratio : [];
+        const beatRows = tonalConf.map((t, i) => ({
+          beat: i,
+          tonal_conf: fmt(t),
+          perc_ratio: fmt(percRatio[i]),
+        }));
+
         return `
           <article class="card wide">
             <details class="disclosure">
@@ -369,6 +377,9 @@
                 <section>
                   ${timelineTable("Key — Collapsed (confirmed real changes only)", collapsedKey, ["start", "end", "key", "mode", "confidence"])}
                 </section>
+                ${beatRows.length > 0 ? `<section>
+                  ${timelineTable("Per-Beat: Tonal Confidence & Percussive Ratio", beatRows, ["beat", "tonal_conf", "perc_ratio"])}
+                </section>` : ""}
               </div>
             </details>
           </article>
