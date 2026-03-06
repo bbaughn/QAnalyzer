@@ -342,24 +342,32 @@
 
       function debugDisclosure(result, sections) {
         const debug = result.debug || {};
-        const tempoSegments = Array.isArray(debug.original_tempo_segments) ? debug.original_tempo_segments : [];
-        const keySegments = Array.isArray(debug.original_key_segments) ? debug.original_key_segments : [];
-        if (tempoSegments.length === 0 && keySegments.length === 0) return "";
-        const derivationRows = sectionDerivationRows(sections, tempoSegments, keySegments);
+        const rawTempo = Array.isArray(debug.raw_tempo_segments) ? debug.raw_tempo_segments : [];
+        const tempoSegments = Array.isArray(debug.tempo_segments) ? debug.tempo_segments : [];
+        const rawKey = Array.isArray(debug.raw_key_segments) ? debug.raw_key_segments : [];
+        const collapsedKey = Array.isArray(debug.collapsed_key_segments) ? debug.collapsed_key_segments : [];
+        if (tempoSegments.length === 0 && rawKey.length === 0) return "";
+        const derivationRows = sectionDerivationRows(sections, tempoSegments, rawKey);
 
         return `
           <article class="card wide">
             <details class="disclosure">
-              <summary>Debug: Original Segments</summary>
+              <summary>Debug: Segments</summary>
               <div class="disclosure-body">
                 <section>
-                  ${timelineTable("Section Derivation (Combined <- Original Inputs)", derivationRows, ["section", "combined", "from_tempo", "from_key"])}
+                  ${timelineTable("Section Derivation (inputs → final section)", derivationRows, ["section", "combined", "from_tempo", "from_key"])}
                 </section>
                 <section>
-                  ${timelineTable("Original Tempo Segments", tempoSegments, ["start", "end", "bpm", "confidence"])}
+                  ${timelineTable("Tempo — Raw (deduped)", rawTempo, ["start", "end", "bpm", "confidence"])}
                 </section>
                 <section>
-                  ${timelineTable("Original Key Segments", keySegments, ["start", "end", "key", "mode", "confidence"])}
+                  ${timelineTable("Tempo — Collapsed", tempoSegments, ["start", "end", "bpm", "confidence"])}
+                </section>
+                <section>
+                  ${timelineTable("Key — Raw (same-label runs merged)", rawKey, ["start", "end", "key", "mode", "confidence"])}
+                </section>
+                <section>
+                  ${timelineTable("Key — Collapsed (confirmed real changes only)", collapsedKey, ["start", "end", "key", "mode", "confidence"])}
                 </section>
               </div>
             </details>

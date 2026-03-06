@@ -80,6 +80,21 @@ def test_tempo_segments_require_2_bpm_change():
     assert abs(segments[1]["bpm"] - 124.0) < 1.5
 
 
+def test_coalesce_tempo_segments_converges_after_intermediate_averaging():
+    # Single-pass coalescing: A(128)+B(129.5) → avg 128.75; C(131) is 2.25 above
+    # that average so it stays as a new segment; C+D(129.5) → avg 130.25.
+    # After one pass: [128.75, 130.25] — delta 1.5, still below the 2.0 threshold.
+    # A second pass must merge these, confirming fixed-point convergence is needed.
+    raw = [
+        {"start": 0.0, "end": 5.0, "bpm": 128.0, "confidence": 0.9},
+        {"start": 5.0, "end": 10.0, "bpm": 129.5, "confidence": 0.9},
+        {"start": 10.0, "end": 15.0, "bpm": 131.0, "confidence": 0.9},
+        {"start": 15.0, "end": 20.0, "bpm": 129.5, "confidence": 0.9},
+    ]
+    merged = _coalesce_tempo_segments(raw, min_delta_bpm=2.0)
+    assert len(merged) == 1
+
+
 def test_coalesce_tempo_segments_for_existing_results():
     raw = [
         {"start": 0.0, "end": 10.0, "bpm": 120.1853, "confidence": 0.9},

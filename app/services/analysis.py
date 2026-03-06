@@ -48,7 +48,8 @@ def _key_from_chroma(chroma_vec: np.ndarray) -> KeyEstimate:
     return KeyEstimate(key=KEYS_MAJOR[min_idx], mode="minor", confidence=min_conf)
 
 
-def _local_tempo_segments(beat_times: np.ndarray) -> list[dict]:
+def _raw_tempo_windows(beat_times: np.ndarray) -> list[dict]:
+    """Per-window BPM estimates before any coalescing."""
     if beat_times.size < 8:
         return []
 
@@ -71,26 +72,58 @@ def _local_tempo_segments(beat_times: np.ndarray) -> list[dict]:
                 "confidence": confidence,
             }
         )
+    return raw_segments
 
-    return _coalesce_tempo_segments(raw_segments, settings.tempo_section_min_delta_bpm)
 
-
-def _coalesce_tempo_segments(segments: list[dict], min_delta_bpm: float) -> list[dict]:
+def _dedup_tempo_windows(segments: list[dict]) -> list[dict]:
+    """Merge consecutive windows with the same integer-rounded BPM for display purposes."""
     if not segments:
         return []
-
     merged: list[dict] = []
     for seg in segments:
         if not merged:
             merged.append(seg.copy())
             continue
         prev = merged[-1]
-        if abs(seg["bpm"] - prev["bpm"]) < min_delta_bpm:
+        if round(seg["bpm"]) == round(prev["bpm"]):
             prev["end"] = seg["end"]
             prev["bpm"] = float((prev["bpm"] + seg["bpm"]) / 2.0)
             prev["confidence"] = float((prev["confidence"] + seg["confidence"]) / 2.0)
         else:
             merged.append(seg.copy())
+    return merged
+
+
+def _local_tempo_segments(beat_times: np.ndarray) -> list[dict]:
+    return _coalesce_tempo_segments(_raw_tempo_windows(beat_times), settings.tempo_section_min_delta_bpm)
+
+
+def _coalesce_tempo_segments(segments: list[dict], min_delta_bpm: float) -> list[dict]:
+    if not segments:
+        return []
+
+    # Run to fixed-point: a single greedy pass updates rolling BPM averages, which
+    # can leave adjacent pairs whose final BPMs are below the threshold (e.g. A+B
+    # average drops close enough to C that a second pass would merge them).  Repeat
+    # until no further merges occur so that all surviving boundaries are genuinely
+    # above the threshold before they are used to derive section edges.
+    while True:
+        merged: list[dict] = []
+        for seg in segments:
+            if not merged:
+                merged.append(seg.copy())
+                continue
+            prev = merged[-1]
+            if abs(seg["bpm"] - prev["bpm"]) < min_delta_bpm:
+                prev["end"] = seg["end"]
+                prev["bpm"] = float((prev["bpm"] + seg["bpm"]) / 2.0)
+                prev["confidence"] = float((prev["confidence"] + seg["confidence"]) / 2.0)
+            else:
+                merged.append(seg.copy())
+        if len(merged) == len(segments):
+            break
+        segments = merged
+
     return merged
 
 
@@ -699,6 +732,7 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
     key_segments_raw, key_segments = _segment_key_timeline(chroma_sync, beat_times)
     global_key = _global_key_from_segments(key_segments_raw if key_segments_raw else key_segments)
 
+    raw_tempo_segments = _dedup_tempo_windows(_raw_tempo_windows(beat_times))
     tempo_segments = _local_tempo_segments(beat_times)
     sections = _build_sections(
         tempo_segments=tempo_segments,
@@ -750,8 +784,20 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
         },
         "sections": sections,
         "debug": {
-            "original_tempo_segments": tempo_segments,
-            "original_key_segments": key_segments_raw,
+            "raw_tempo_segments": raw_tempo_segments,
+            "tempo_segments": tempo_segments,
+            "raw_key_segments": key_segments_raw,
+            "collapsed_key_segments": [
+                {
+                    **seg,
+                    **_dominant_key_in_interval(
+                        key_segments_raw if key_segments_raw else key_segments,
+                        float(seg["start"]),
+                        float(seg["end"]),
+                    ),
+                }
+                for seg in key_segments
+            ],
         },
         "form_sections": form_sections,
         "provenance": {
