@@ -606,23 +606,44 @@ def _build_form_sections(duration: float, rms: np.ndarray, sr: int, hop_length: 
 def _find_harmonic_start(
     beat_times: np.ndarray,
     chroma_sync: np.ndarray,
+    percussive_ratio_per_frame: np.ndarray,
+    sr: int,
+    hop_length: int,
     threshold: float,
     consecutive: int,
+    perc_threshold: float,
 ) -> tuple[float, float, float, int]:
     if beat_times.size < 2 or chroma_sync.shape[1] == 0:
         return 0.0, 0.0, 0.0, 0
 
+    # Per-beat tonal confidence from key correlation.
     tonal_conf = []
     for i in range(chroma_sync.shape[1]):
-        vec = chroma_sync[:, i]
-        est = _key_from_chroma(vec)
-        tonal_conf.append(est.confidence)
+        tonal_conf.append(_key_from_chroma(chroma_sync[:, i]).confidence)
     tonal_conf_arr = np.array(tonal_conf, dtype=float)
 
+    # Per-beat mean percussive ratio (same aggregation as _non_harmonic_segments).
+    per_beat_perc = []
+    for i in range(min(chroma_sync.shape[1], beat_times.size - 1)):
+        s = int(beat_times[i] * sr / hop_length)
+        e = int(beat_times[i + 1] * sr / hop_length)
+        if e <= s:
+            e = s + 1
+        per_beat_perc.append(float(np.mean(percussive_ratio_per_frame[s:e])))
+    # Pad to match tonal_conf length if needed.
+    while len(per_beat_perc) < len(tonal_conf):
+        per_beat_perc.append(per_beat_perc[-1] if per_beat_perc else 1.0)
+    perc_arr = np.array(per_beat_perc, dtype=float)
+
+    # A window is "harmonic" when tonal confidence is sustained AND the signal is
+    # not predominantly percussive.  Using both signals prevents drum overtones
+    # (which can produce spuriously high key-correlation scores) from being
+    # mistaken for harmonic content.
     start_idx = 0
     for i in range(0, max(1, tonal_conf_arr.size - consecutive + 1)):
-        window = tonal_conf_arr[i : i + consecutive]
-        if np.all(window >= threshold):
+        tonal_window = tonal_conf_arr[i : i + consecutive]
+        perc_window = perc_arr[i : i + consecutive]
+        if np.all(tonal_window >= threshold) and np.all(perc_window < perc_threshold):
             start_idx = i
             break
     start_time = float(beat_times[min(start_idx, beat_times.size - 1)])
@@ -775,8 +796,12 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
     bars_4_4, _, _, _ = _find_harmonic_start(
         beat_times,
         chroma_sync,
+        percussive_ratio_per_frame,
+        sr,
+        hop_length,
         settings.harmonic_conf_threshold,
         settings.harmonic_consecutive_beats,
+        settings.harmonic_perc_threshold,
     )
 
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(

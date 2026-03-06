@@ -18,16 +18,29 @@ from app.services.analysis import (
 
 
 def test_harmonic_start_bars_count():
+    sr = 22050
+    hop_length = 512
     beat_times = np.arange(0, 40, dtype=float) * 0.5
     chroma_sync = np.zeros((12, beat_times.size))
 
     # Harmonic content starts at beat 16 and stays stable.
     chroma_sync[0, 16:] = 1.0
+
+    # Percussive ratio: high (>0.55) for beats 0-15, low for beats 16+.
+    n_frames = int(beat_times[-1] * sr / hop_length) + 2
+    perc_ratio = np.ones(n_frames, dtype=float) * 0.8
+    beat16_frame = int(beat_times[16] * sr / hop_length)
+    perc_ratio[beat16_frame:] = 0.1
+
     bars, rounded, start_time, conf = _find_harmonic_start(
         beat_times=beat_times,
         chroma_sync=chroma_sync,
+        percussive_ratio_per_frame=perc_ratio,
+        sr=sr,
+        hop_length=hop_length,
         threshold=0.1,
         consecutive=4,
+        perc_threshold=0.55,
     )
 
     assert bars == 4.0
