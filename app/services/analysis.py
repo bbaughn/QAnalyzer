@@ -9,11 +9,33 @@ import numpy as np
 
 from app.config import settings
 
-KEYS_MAJOR = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-KEYS_MINOR = [f"{k}m" for k in KEYS_MAJOR]
+KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
-KRUMHANSL_MAJOR = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
-KRUMHANSL_MINOR = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+# Krumhansl-style chroma profiles for all 7 diatonic modes.
+# Each array starts on C; np.roll(profile, n) gives the profile rooted on KEYS[n].
+# Weights derived from Krumhansl (1990) for major/minor and adapted by scale-degree
+# importance (tonic > 5th > 3rd > other scale tones > chromatic non-members) for the
+# remaining modes.
+MODE_PROFILES: list[tuple[str, np.ndarray]] = [
+    ("major",      np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])),
+    # Dorian: 1 2 b3 4 5 6 b7  (raised 6th vs natural minor)
+    ("dorian",     np.array([6.33, 2.30, 3.52, 5.38, 2.30, 3.53, 2.30, 4.75, 2.30, 3.66, 3.34, 2.30])),
+    # Phrygian: 1 b2 b3 4 5 b6 b7  (lowered 2nd is the defining colour)
+    ("phrygian",   np.array([6.33, 5.00, 2.30, 5.38, 2.30, 3.53, 2.30, 4.75, 3.98, 2.30, 3.34, 2.30])),
+    # Lydian: 1 2 3 #4 5 6 7  (raised 4th vs major)
+    ("lydian",     np.array([6.35, 2.23, 3.48, 2.23, 4.38, 2.23, 4.00, 5.19, 2.39, 3.66, 2.29, 3.50])),
+    # Mixolydian: 1 2 3 4 5 6 b7  (lowered 7th vs major)
+    ("mixolydian", np.array([6.35, 2.23, 3.48, 2.23, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 3.34, 2.29])),
+    ("minor",      np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])),
+    # Locrian: 1 b2 b3 4 b5 b6 b7  (diminished 5th)
+    ("locrian",    np.array([6.33, 4.50, 2.30, 5.00, 2.30, 3.53, 4.50, 2.30, 3.98, 2.30, 3.34, 2.30])),
+]
+
+# Pre-normalise so _key_from_chroma only needs one norm per profile.
+_MODE_PROFILES_NORM: list[tuple[str, np.ndarray]] = [
+    (name, profile / (np.linalg.norm(profile) + 1e-9))
+    for name, profile in MODE_PROFILES
+]
 
 
 @dataclass
@@ -28,24 +50,20 @@ def _key_from_chroma(chroma_vec: np.ndarray) -> KeyEstimate:
         return KeyEstimate(key="C", mode="major", confidence=0.0)
 
     chroma_norm = chroma_vec / (np.linalg.norm(chroma_vec) + 1e-9)
-    maj_scores = []
-    min_scores = []
-    for shift in range(12):
-        maj_template = np.roll(KRUMHANSL_MAJOR, shift)
-        min_template = np.roll(KRUMHANSL_MINOR, shift)
-        maj_template = maj_template / (np.linalg.norm(maj_template) + 1e-9)
-        min_template = min_template / (np.linalg.norm(min_template) + 1e-9)
-        maj_scores.append(float(np.dot(chroma_norm, maj_template)))
-        min_scores.append(float(np.dot(chroma_norm, min_template)))
 
-    maj_idx = int(np.argmax(maj_scores))
-    min_idx = int(np.argmax(min_scores))
-    maj_conf = maj_scores[maj_idx]
-    min_conf = min_scores[min_idx]
+    best_score = -1.0
+    best_key_idx = 0
+    best_mode = "major"
 
-    if maj_conf >= min_conf:
-        return KeyEstimate(key=KEYS_MAJOR[maj_idx], mode="major", confidence=maj_conf)
-    return KeyEstimate(key=KEYS_MAJOR[min_idx], mode="minor", confidence=min_conf)
+    for mode_name, profile_norm in _MODE_PROFILES_NORM:
+        for shift in range(12):
+            score = float(np.dot(chroma_norm, np.roll(profile_norm, shift)))
+            if score > best_score:
+                best_score = score
+                best_key_idx = shift
+                best_mode = mode_name
+
+    return KeyEstimate(key=KEYS[best_key_idx], mode=best_mode, confidence=best_score)
 
 
 def _raw_tempo_windows(beat_times: np.ndarray) -> list[dict]:
