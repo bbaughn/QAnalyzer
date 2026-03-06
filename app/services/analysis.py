@@ -603,6 +603,36 @@ def _build_form_sections(duration: float, rms: np.ndarray, sr: int, hop_length: 
     return sections
 
 
+def _beat_attack_sustain_ratios(
+    y: np.ndarray,
+    sr: int,
+    beat_times: np.ndarray,
+) -> list[float]:
+    """Return attack/sustain RMS ratio for each beat using a peak-relative split.
+
+    The boundary between attack and sustain is the sample of maximum absolute
+    amplitude within the beat.  For percussion the peak is within the first few
+    milliseconds, so the sustain window captures the full ring/decay.  For a pad
+    or fading-in melody the peak arrives late or spans the beat, pushing the ratio
+    toward or below 1.  High ratio = percussive; ratio ≈ 1 or lower = sustained/harmonic.
+    """
+    ratios = []
+    for i in range(beat_times.size - 1):
+        start = max(0, int(beat_times[i] * sr))
+        end = min(len(y), int(beat_times[i + 1] * sr))
+        beat = y[start:end]
+        if beat.size < 4:
+            ratios.append(1.0)
+            continue
+        peak_idx = int(np.argmax(np.abs(beat)))
+        # Require at least 1 sample on each side so the split is meaningful.
+        peak_idx = max(1, min(peak_idx, beat.size - 2))
+        attack_rms = float(np.sqrt(np.mean(beat[:peak_idx] ** 2)))
+        sustain_rms = float(np.sqrt(np.mean(beat[peak_idx:] ** 2)))
+        ratios.append(attack_rms / (sustain_rms + 1e-9))
+    return ratios
+
+
 def _find_harmonic_start(
     beat_times: np.ndarray,
     chroma_sync: np.ndarray,
@@ -793,6 +823,8 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
     rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
     percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
 
+    beat_attack_sustain = _beat_attack_sustain_ratios(y, sr, beat_times)
+
     bars_4_4, _, _, _, beat_tonal_conf, beat_perc_ratio = _find_harmonic_start(
         beat_times,
         chroma_sync,
@@ -832,6 +864,7 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
             "raw_key_segments": key_segments_raw,
             "beat_tonal_conf": beat_tonal_conf,
             "beat_perc_ratio": beat_perc_ratio,
+            "beat_attack_sustain": beat_attack_sustain,
             "collapsed_key_segments": [
                 {
                     **seg,

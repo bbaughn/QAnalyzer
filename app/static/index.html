@@ -298,7 +298,7 @@
         }
         const header = keys.map((k) => `<th>${k}</th>`).join("");
         const body = items
-          .slice(0, 50)
+          .slice(0, 200)
           .map((item) => `<tr>${keys.map((k) => `<td>${item[k] ?? "-"}</td>`).join("")}</tr>`)
           .join("");
         return `
@@ -351,11 +351,18 @@
 
         const tonalConf = Array.isArray(debug.beat_tonal_conf) ? debug.beat_tonal_conf : [];
         const percRatio = Array.isArray(debug.beat_perc_ratio) ? debug.beat_perc_ratio : [];
-        const beatRows = tonalConf.map((t, i) => ({
-          beat: i,
-          tonal_conf: fmt(t),
-          perc_ratio: fmt(percRatio[i]),
-        }));
+        const attackSustain = Array.isArray(debug.beat_attack_sustain) ? debug.beat_attack_sustain : [];
+        // Aggregate per-beat arrays into 4-beat bars (non-overlapping), capped at 40 bars.
+        const mean = (arr) => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+        const barRows = [];
+        for (let b = 0; b * 4 < tonalConf.length && b < 40; b++) {
+          barRows.push({
+            bar: b + 1,
+            mean_tonal_conf: fmt(mean(tonalConf.slice(b * 4, b * 4 + 4))),
+            mean_perc_ratio: fmt(mean(percRatio.slice(b * 4, b * 4 + 4))),
+            mean_attack_sustain: fmt(mean(attackSustain.slice(b * 4, b * 4 + 4))),
+          });
+        }
 
         return `
           <article class="card wide">
@@ -377,8 +384,8 @@
                 <section>
                   ${timelineTable("Key — Collapsed (confirmed real changes only)", collapsedKey, ["start", "end", "key", "mode", "confidence"])}
                 </section>
-                ${beatRows.length > 0 ? `<section>
-                  ${timelineTable("Per-Beat: Tonal Confidence & Percussive Ratio", beatRows, ["beat", "tonal_conf", "perc_ratio"])}
+                ${barRows.length > 0 ? `<section>
+                  ${timelineTable("Per-Bar (4 beats): Tonal Conf, Percussive Ratio, Attack/Sustain", barRows, ["bar", "mean_tonal_conf", "mean_perc_ratio", "mean_attack_sustain"])}
                 </section>` : ""}
               </div>
             </details>
