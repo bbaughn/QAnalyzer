@@ -1085,6 +1085,24 @@ def _find_harmonic_start(
     if pass2_meaningful:
         active_passes.append(idx_pass2)
     candidates = [i for i in active_passes if i >= 0]
+
+    # Pre-beat check: if the beat tracker started well after t=0 (e.g. because
+    # the track opens with softly-attacked pad synths that produce weak onsets),
+    # check whether the pre-beat audio is low-percussive.  If so, harmonic
+    # content was present before the first detected beat, meaning there is no
+    # percussion-only intro → clamp start_idx to 0.
+    # Guard: only applies when beat_times[0] is more than 2 beat-lengths after
+    # t=0 to avoid triggering on the normal beat-tracker startup latency.
+    if beat_times.size >= 2:
+        beat_period = float(np.median(np.diff(beat_times)))
+        pre_beat_sec = float(beat_times[0])
+        pre_beat_frames = int(pre_beat_sec * sr / hop_length)
+        min_gap_sec = beat_period * 2
+        if pre_beat_sec > min_gap_sec and pre_beat_frames > 0:
+            pre_perc = float(np.mean(percussive_ratio_per_frame[:pre_beat_frames]))
+            if pre_perc < perc_threshold:
+                candidates = [0] + candidates
+
     idx = min(candidates) if candidates else 0
     start_idx = max(0, idx)
 
@@ -1279,6 +1297,22 @@ def extract_audio_features(path: str) -> dict:
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
     tempo, beat_frames = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop_length)
+
+    # Detect and correct 4/3 tempo tracking error at extraction time so that
+    # chroma_sync is aligned to the true beat grid.  When the interpret phase
+    # later calls _detect_tempo_correction_ratio with the corrected beat_times
+    # (detected_bpm≈true, candidate≈3/4×true), the 3/4-subharmonic energy is
+    # low relative to the true peak, so the correction does not double-fire.
+    if beat_times.size >= 8:
+        _extraction_corr = _detect_tempo_correction_ratio(onset_env, beat_times, sr, hop_length)
+        if _extraction_corr != 1.0:
+            _corrected_start_bpm = float(np.squeeze(tempo)) * _extraction_corr
+            _, beat_frames = librosa.beat.beat_track(
+                onset_envelope=onset_env, sr=sr, hop_length=hop_length,
+                start_bpm=_corrected_start_bpm,
+            )
+            beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop_length)
+
     onset_times = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, hop_length=hop_length, units="time")
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length)

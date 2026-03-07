@@ -134,14 +134,10 @@ tracks:
         mode: "minor"
       key_end:
         root: "G"
-        # FAILING: last section detects as dorian; spreadsheet says Gm throughout.
         mode: "minor"
       tuning: 50
       tuning_end: 50
       no_drums: false
-      # FAILING: algorithm detects ~3 bars; spreadsheet says 0 (no percussion-only intro).
-      # Beat tracker locked onto 4/3 tempo and was corrected, but beat positions used
-      # in _find_harmonic_start are still at the wrong (120 BPM) grid, skewing bar count.
       bars_percussion: 0
       swing: true
 
