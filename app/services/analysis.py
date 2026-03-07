@@ -45,7 +45,15 @@ class KeyEstimate:
     confidence: float
 
 
-def _key_from_chroma(chroma_vec: np.ndarray) -> KeyEstimate:
+def _key_from_chroma(chroma_vec: np.ndarray, constrain_root: int | None = None) -> KeyEstimate:
+    """Estimate key/mode from a chroma vector.
+
+    If *constrain_root* is provided (a KEYS index), only modes rooted on that
+    pitch class are considered.  This is used when the caller has established a
+    reliable global root (e.g. from the full-track mean chroma) and wants to
+    find the best *mode* for a shorter window without letting a chord transient
+    on a different root win the comparison.
+    """
     if np.allclose(chroma_vec.sum(), 0.0):
         return KeyEstimate(key="C", mode="major", confidence=0.0)
 
@@ -56,7 +64,8 @@ def _key_from_chroma(chroma_vec: np.ndarray) -> KeyEstimate:
     best_mode = "major"
 
     for mode_name, profile_norm in _MODE_PROFILES_NORM:
-        for shift in range(12):
+        shifts = [constrain_root] if constrain_root is not None else range(12)
+        for shift in shifts:
             score = float(np.dot(chroma_norm, np.roll(profile_norm, shift)))
             if score > best_score:
                 best_score = score
@@ -79,6 +88,15 @@ def _key_from_chroma(chroma_vec: np.ndarray) -> KeyEstimate:
         b6_idx = (best_key_idx + 8) % 12
         if chroma_vec[m6_idx] > chroma_vec[b6_idx] * 1.1:
             best_mode = "dorian"
+
+    # Similarly, major and mixolydian share 6 of 7 scale degrees; the b7 vs
+    # major-7 energy decides which fits.  In EDM the b7 is the more common
+    # borrowed degree so an ambiguous major result often belongs to mixolydian.
+    if best_mode == "major":
+        b7_idx = (best_key_idx + 10) % 12
+        maj7_idx = (best_key_idx + 11) % 12
+        if chroma_vec[b7_idx] > chroma_vec[maj7_idx] * 1.1:
+            best_mode = "mixolydian"
 
     return KeyEstimate(key=KEYS[best_key_idx], mode=best_mode, confidence=best_score)
 
@@ -162,7 +180,22 @@ def _coalesce_tempo_segments(segments: list[dict], min_delta_bpm: float) -> list
     return merged
 
 
-def _segment_key_timeline_raw(chroma_sync: np.ndarray, beat_times: np.ndarray) -> list[dict]:
+def _segment_key_timeline_raw(
+    chroma_sync: np.ndarray,
+    beat_times: np.ndarray,
+    global_root_idx: int | None = None,
+    global_root_margin: float = 0.015,
+) -> list[dict]:
+    """Compute per-window key estimates.
+
+    *global_root_idx* — when provided, each window is scored twice: once
+    unrestricted and once with the root constrained to *global_root_idx*.  If
+    the unconstrained winner's root differs from *global_root_idx* AND the
+    constrained score is within *global_root_margin* of the unconstrained score,
+    the constrained (global-root) estimate wins.  This prevents a transient
+    chord on a non-tonic root from overriding a stable global key centre that
+    the full-track chroma has identified.
+    """
     if chroma_sync.shape[1] < 8 or beat_times.size < 8:
         return []
 
@@ -173,6 +206,10 @@ def _segment_key_timeline_raw(chroma_sync: np.ndarray, beat_times: np.ndarray) -
         end = min(start + win, chroma_sync.shape[1])
         vec = np.mean(chroma_sync[:, start:end], axis=1)
         est = _key_from_chroma(vec)
+        if global_root_idx is not None and KEYS.index(est.key) != global_root_idx:
+            constrained = _key_from_chroma(vec, constrain_root=global_root_idx)
+            if est.confidence - constrained.confidence <= global_root_margin:
+                est = constrained
         start_time = float(beat_times[min(start, beat_times.size - 1)])
         end_time = float(beat_times[min(end - 1, beat_times.size - 1)])
         raw.append(
@@ -300,7 +337,18 @@ def _confirm_key_segments(raw_segments: list[dict]) -> list[dict]:
 
 
 def _segment_key_timeline(chroma_sync: np.ndarray, beat_times: np.ndarray) -> tuple[list[dict], list[dict]]:
-    raw = _segment_key_timeline_raw(chroma_sync, beat_times)
+    # Derive a global root hint from the full-track mean chroma.  In bass-driven
+    # music the tonic is the note with the highest long-term chroma energy (bass
+    # drone / repeating root bass hits dominate the chroma accumulation).  Using
+    # the peak-energy bin — rather than the Krumhansl correlation winner — avoids
+    # having the higher b6 weight in the minor profile override a track whose
+    # bassline is on a different root (e.g. A mixolydian, where the harmonic
+    # series of the A bass can inflate the b6 energy of Gb/F# minor, causing the
+    # correlation to mis-identify the root as Gb).
+    global_chroma = np.mean(chroma_sync, axis=1)
+    global_root_idx = int(np.argmax(global_chroma))
+
+    raw = _segment_key_timeline_raw(chroma_sync, beat_times, global_root_idx=global_root_idx)
     raw_coalesced = _coalesce_key_segments_same_label(raw)
     confirmed = _confirm_key_segments(raw)
     return raw_coalesced, confirmed
@@ -730,18 +778,25 @@ def _find_harmonic_start(
     # transitional windows where some beats still have percussion transients
     # don't trigger a false early detection.
     idx_pass2 = _scan(require_perc=False, max_atk=atk_threshold * 0.5)
-    # Take the earlier of the two passes.  Pass 1 can find a "clean" harmonic
-    # moment later in the track (e.g. a drum breakdown) that is technically
-    # valid but is not the actual melody entry.  If pass 2 (atk-only) found
-    # an earlier window it is the better candidate for the true harmonic start.
-    if idx_pass1 < 0 and idx_pass2 < 0:
-        idx = 0
-    elif idx_pass1 < 0:
-        idx = idx_pass2
-    elif idx_pass2 < 0:
-        idx = idx_pass1
+    # Pass 0: check whether harmonic content is already present at beat 0,
+    # i.e. drums and melody coexist from the very start with no drum-only intro.
+    # We use the MEDIAN (not mean) of the opening window's atk values so that
+    # sparse drum transients (e.g. a kick every 4 beats) don't inflate the
+    # aggregate and hide the otherwise-low-atk harmonic beats.
+    # A pure drum intro will have uniformly high atk across all beats in the
+    # window, keeping the median well above atk_threshold.
+    if (tonal_conf_arr.size >= consecutive
+            and np.all(tonal_conf_arr[:consecutive] >= threshold)
+            and np.median(atk_arr[:consecutive]) < atk_threshold):
+        idx_pass0 = 0
     else:
-        idx = min(idx_pass1, idx_pass2)
+        idx_pass0 = -1
+    # Take the earliest non-negative result across all passes.  Pass 1 can find
+    # a "clean" harmonic moment later in the track (e.g. a drum breakdown) that
+    # is technically valid but is not the actual melody entry.  Earlier passes
+    # represent better candidates for the true harmonic start.
+    candidates = [i for i in [idx_pass0, idx_pass1, idx_pass2] if i >= 0]
+    idx = min(candidates) if candidates else 0
     start_idx = max(0, idx)
 
     start_time = float(beat_times[min(start_idx, beat_times.size - 1)])

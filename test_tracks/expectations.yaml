@@ -25,24 +25,19 @@ tracks:
   - title: "Subterano"
     artist: "Guy Contact"
     file: "test_tracks/subterano.wav"
-    # CSV says: A mixolydian, bars_percussion=0 (harmonic from beat 1).
-    # Algorithm limitation: dense percussion spikes every ~4 beats prevent a clean
-    # 8-beat low-atk window at beat 0, so bars_percussion resolves to 6.
-    # Key: the track is tonally complex; D major (shares key sig with A mixolydian)
-    # is what the confirmed-segment algorithm anchors to for the opening section.
     expected:
       bpm: 120
       bpm_end: 120
       key:
-        root: "D"
-        mode: "major"
+        root: "A"
+        mode: "mixolydian"
       key_end:
-        root: "Gb"
-        mode: "minor"
+        root: "A"
+        mode: "mixolydian"
       tuning: 0
       tuning_end: 0
       no_drums: false
-      bars_percussion: 6
+      bars_percussion: 0
       swing: false
 
   - title: "Rain and Snow Mixture"
