@@ -785,10 +785,19 @@ def _find_harmonic_start(
     # aggregate and hide the otherwise-low-atk harmonic beats.
     # A pure drum intro will have uniformly high atk across all beats in the
     # window, keeping the median well above atk_threshold.
-    if (tonal_conf_arr.size >= consecutive
-            and np.all(tonal_conf_arr[:consecutive] >= threshold)
-            and np.median(atk_arr[:consecutive]) < atk_threshold):
-        idx_pass0 = 0
+    #
+    # Secondary condition: if ANY single beat in the opening window has an
+    # extremely low atk (< atk_threshold × 0.25), that beat almost certainly
+    # carries a pure sustained tone (synth pad, held chord) rather than a
+    # percussion hit — percussion cannot produce such a near-zero attack value.
+    # This catches dense breakbeat tracks where the median atk is elevated by
+    # drum transients but one beat clearly belongs to a harmonic element.
+    if tonal_conf_arr.size >= consecutive and np.all(tonal_conf_arr[:consecutive] >= threshold):
+        opening_atk = atk_arr[:consecutive]
+        if np.median(opening_atk) < atk_threshold or np.min(opening_atk) < atk_threshold * 0.25:
+            idx_pass0 = 0
+        else:
+            idx_pass0 = -1
     else:
         idx_pass0 = -1
     # Take the earliest non-negative result across all passes.  Pass 1 can find
@@ -1015,7 +1024,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     sections = _coalesce_sections_by_content(sections, settings.tempo_section_min_delta_bpm)
     sections = _apply_section_tuning(sections, global_tuning_cents=global_tuning_cents)
     for s in sections:
-        s["tempo_bpm_rounded"] = int(round(s["tempo_bpm"])) if s.get("tempo_bpm") is not None else None
+        s["tempo_bpm_rounded"] = int(s["tempo_bpm"]) if s.get("tempo_bpm") is not None else None
 
     global_bpm = float(np.median([s["bpm"] for s in tempo_segments])) if tempo_segments else float(tempo_raw)
     global_bpm_conf = (
