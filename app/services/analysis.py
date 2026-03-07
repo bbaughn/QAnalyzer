@@ -914,10 +914,24 @@ def _swing_from_grid(beat_times: np.ndarray, onset_times: np.ndarray) -> tuple[b
     median = float(np.median(r))
     spread = float(np.std(r))
 
-    # Straight ~= 0.5, swung offbeat is typically delayed.
+    # Score A — consistent late offbeat (jazz / house swing): the median
+    # mid-beat onset falls noticeably after the straight 0.5 position.
+    # Stability penalises high spread because randomly scattered onsets
+    # can accidentally produce a late median.
     raw_score = max(0.0, (median - 0.53) / 0.17)
     stability = max(0.0, 1.0 - (spread / 0.12))
-    score = float(np.clip(raw_score * stability, 0.0, 1.0))
+    median_score = raw_score * stability
+
+    # Score B — sparse late offbeat (breakbeat / funk swing): most beats
+    # play nearly straight, but a significant fraction (~10-18 %) has a
+    # clearly late note (ratio > 0.65).  Straight tracks have essentially
+    # zero such beats.  This captures breakbeat swing that does not raise
+    # the median appreciably because the majority of sub-beat onsets are
+    # still close to 0.5.
+    late_frac = float(np.mean(r > 0.65))
+    late_score = max(0.0, (late_frac - 0.04) / 0.08)
+
+    score = float(np.clip(max(median_score, late_score), 0.0, 1.0))
     return bool(score > 0.45), score
 
 

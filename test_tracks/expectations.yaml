@@ -74,4 +74,4 @@ tracks:
       tuning_end: 0
       no_drums: false
       bars_percussion: 8
-      swing: false
+      swing: true
