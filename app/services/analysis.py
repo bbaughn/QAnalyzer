@@ -761,6 +761,12 @@ def _find_harmonic_start(
         for tracks with tonal/ringy percussion that fools HPSS (low perc_ratio
         throughout).  Uses a stricter atk threshold to avoid triggering on
         transitional windows that mix percussion and harmonic beats.
+
+        Both passes also require chroma movement: a window where all beats are
+        dominated by the same pitch class is a bass drone or tonal percussion,
+        not a melodic entry.  We require at least 3 distinct dominant pitch
+        classes across the consecutive beats.  This threshold is calibrated for
+        the default consecutive=8; re-evaluate if that setting changes.
         """
         for i in range(0, max(1, tonal_conf_arr.size - consecutive + 1)):
             tonal_window = tonal_conf_arr[i : i + consecutive]
@@ -769,7 +775,11 @@ def _find_harmonic_start(
             tonal_ok = np.all(tonal_window >= threshold)
             perc_ok = np.mean(perc_window) < perc_threshold
             atk_ok = np.mean(atk_window) < max_atk
-            if tonal_ok and atk_ok and (perc_ok or not require_perc):
+            n_cols = chroma_sync.shape[1]
+            chroma_window = chroma_sync[:, i : min(i + consecutive, n_cols)]
+            dom = np.argmax(chroma_window, axis=0)
+            chroma_ok = len(set(dom.tolist())) >= 3
+            if tonal_ok and atk_ok and chroma_ok and (perc_ok or not require_perc):
                 return i
         return -1
 
@@ -792,7 +802,18 @@ def _find_harmonic_start(
     # percussion hit — percussion cannot produce such a near-zero attack value.
     # This catches dense breakbeat tracks where the median atk is elevated by
     # drum transients but one beat clearly belongs to a harmonic element.
-    if tonal_conf_arr.size >= consecutive and np.all(tonal_conf_arr[:consecutive] >= threshold):
+    # Pass 0 also requires that the opening window has chroma movement — same
+    # ≥3 distinct dominant pitches guard used in _scan.  A bass drone that plays
+    # throughout a drum intro creates strong tonal_conf and low atk but keeps
+    # the chroma locked on a single pitch class; we must not misclassify that
+    # as "melody present from beat 0."
+    opening_dom = np.argmax(chroma_sync[:, : min(consecutive, chroma_sync.shape[1])], axis=0)
+    opening_chroma_varied = len(set(opening_dom.tolist())) >= 3
+    if (
+        tonal_conf_arr.size >= consecutive
+        and np.all(tonal_conf_arr[:consecutive] >= threshold)
+        and opening_chroma_varied
+    ):
         opening_atk = atk_arr[:consecutive]
         if np.median(opening_atk) < atk_threshold or np.min(opening_atk) < atk_threshold * 0.25:
             idx_pass0 = 0
@@ -1028,6 +1049,16 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
 
     raw_tempo_segments = _dedup_tempo_windows(_raw_tempo_windows(beat_times))
     tempo_segments = _local_tempo_segments(beat_times)
+    # Recompute each segment's BPM as the mean IBI of all beats within it.
+    # The median-based window BPMs used during coalescing are robust for segment
+    # boundary detection, but when the beat tracker quantises positions to the
+    # STFT hop grid the median systematically picks the shorter IBI in a bimodal
+    # (alternating short/long) distribution, biasing BPM upward by ~1.  The mean
+    # IBI across the full segment corrects this without affecting segment structure.
+    for _seg in tempo_segments:
+        _seg_beats = beat_times[(beat_times >= _seg["start"]) & (beat_times <= _seg["end"])]
+        if _seg_beats.size >= 2:
+            _seg["bpm"] = float(60.0 / np.mean(np.diff(_seg_beats)))
     sections = _build_sections(
         tempo_segments=tempo_segments,
         key_segments=key_segments,
@@ -1038,7 +1069,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     sections = _coalesce_sections_by_content(sections, settings.tempo_section_min_delta_bpm)
     sections = _apply_section_tuning(sections, global_tuning_cents=global_tuning_cents)
     for s in sections:
-        s["tempo_bpm_rounded"] = int(s["tempo_bpm"]) if s.get("tempo_bpm") is not None else None
+        s["tempo_bpm_rounded"] = int(round(s["tempo_bpm"])) if s.get("tempo_bpm") is not None else None
 
     global_bpm = float(np.median([s["bpm"] for s in tempo_segments])) if tempo_segments else float(tempo_raw)
     global_bpm_conf = (

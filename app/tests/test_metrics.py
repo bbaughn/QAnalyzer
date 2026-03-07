@@ -23,8 +23,13 @@ def test_harmonic_start_bars_count():
     beat_times = np.arange(0, 40, dtype=float) * 0.5
     chroma_sync = np.zeros((12, beat_times.size))
 
-    # Harmonic content starts at beat 16 and stays stable.
-    chroma_sync[0, 16:] = 1.0
+    # Harmonic content starts at beat 16 with pitch variety.
+    # The chroma_ok guard in _find_harmonic_start requires ≥3 distinct dominant
+    # pitch classes in the consecutive window, so a realistic melody that moves
+    # through multiple notes is needed rather than a single held pitch.
+    # Alternate C(0) / D(2) / E(4) across beats in a 3-beat cycle.
+    for j, root in enumerate([0, 2, 4]):
+        chroma_sync[root, 16 + j :: 3] = 1.0
 
     # Percussive ratio: high (>0.55) for beats 0-15, low for beats 16+.
     n_frames = int(beat_times[-1] * sr / hop_length) + 2
