@@ -398,12 +398,128 @@ def _segment_key_timeline(chroma_sync: np.ndarray, beat_times: np.ndarray) -> tu
     raw = _segment_key_timeline_raw(chroma_sync, beat_times, global_root_idx=global_root_idx)
     raw_coalesced = _coalesce_key_segments_same_label(raw)
     confirmed = _confirm_key_segments(raw)
+    # Fallback: if _confirm_key_segments collapses the track to a single segment
+    # (common when a track modulates through several modes within each key centre,
+    # so no (key, mode) pair runs long enough to confirm), try root-level
+    # detection.  This groups windows by root only, ignoring mode cycling, and
+    # determines mode from aggregate chroma per confirmed root period.
+    if len(confirmed) <= 1:
+        root_confirmed = _confirm_root_change_segments(raw, chroma_sync, beat_times)
+        if len(root_confirmed) >= 2:
+            confirmed = root_confirmed
+            raw_coalesced = root_confirmed
     # Refine minor→dorian using aggregate chroma within each segment.
     # Per-window detection is too noisy for this distinction; segment-mean
     # chroma gives a reliable m6/b6 ratio (see _apply_segment_dorian_refinement).
     confirmed = _apply_segment_dorian_refinement(confirmed, chroma_sync, beat_times)
     raw_coalesced = _apply_segment_dorian_refinement(raw_coalesced, chroma_sync, beat_times)
     return raw_coalesced, confirmed
+
+
+def _confirm_root_change_segments(
+    raw_segments: list[dict],
+    chroma_sync: np.ndarray,
+    beat_times: np.ndarray,
+    bin_sec: float = 60.0,
+    min_run_sec: float = 90.0,
+) -> list[dict]:
+    """Detect structural one-way key changes using large-window chroma analysis.
+
+    Divides the track into time bins and computes the dominant root of each bin
+    from its *aggregate* chroma (unconstrained Krumhansl correlation).  Aggregate
+    chroma over a large window is far more stable than per-window estimates:
+    the tonal centre repeats throughout and accumulates dominant energy, while
+    diatonically-related chord tones (IV, V, VI…) only appear transiently.
+
+    This handles tracks like Jettison (Ab drone intro → D major section) where
+    the D section has many per-window estimates of G, Gb, A (all diatonic to D
+    major) that fragment a per-window neighbourhood vote, but whose aggregate
+    chroma clearly points to D.
+
+    Consecutive bins with the same root are grouped into runs; runs shorter than
+    min_run_sec are discarded (filters brief transition bins).  A cycling-
+    modulation guard then rejects tracks where the same root appears in more than
+    one run (e.g. B → Ab → B → Ab), as these represent oscillating tonality
+    rather than a structural one-way modulation.
+
+    For each confirmed root run, mode is determined from its aggregate chroma
+    (constrained to the confirmed root).
+
+    Returns ≥2 segments when a genuine structural key change is detected,
+    otherwise [].  Used as a fallback in _segment_key_timeline when
+    _confirm_key_segments produces only a single segment.
+    """
+    if beat_times.size < 2:
+        return []
+    duration = float(beat_times[-1])
+    if duration < min_run_sec * 2:
+        return []
+
+    # Aggregate chroma per time bin → unconstrained root estimate.
+    bin_edges = list(np.arange(0.0, duration, bin_sec)) + [duration]
+    bin_roots: list[tuple[float, float, str, float]] = []
+    for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
+        mask = (beat_times >= lo) & (beat_times < hi)
+        cols = np.where(mask)[0]
+        if cols.size < 4:
+            continue
+        agg = np.mean(chroma_sync[:, cols], axis=1)
+        est = _key_from_chroma(agg)
+        bin_roots.append((lo, hi, est.key, float(est.confidence)))
+
+    if len(bin_roots) < 2:
+        return []
+
+    # Group consecutive bins with the same root into runs.
+    runs: list[dict] = []
+    i = 0
+    while i < len(bin_roots):
+        root = bin_roots[i][2]
+        j = i + 1
+        while j < len(bin_roots) and bin_roots[j][2] == root:
+            j += 1
+        start_t = bin_roots[i][0]
+        end_t = bin_roots[j - 1][1]
+        if end_t - start_t >= min_run_sec:
+            root_idx = KEYS.index(root)
+            mask = (beat_times >= start_t) & (beat_times <= end_t)
+            cols = np.where(mask)[0]
+            if cols.size > 0:
+                agg = np.mean(chroma_sync[:, cols], axis=1)
+                mode_est = _key_from_chroma(agg, constrain_root=root_idx)
+                mode = mode_est.mode
+            else:
+                mode = bin_roots[i][2]
+            runs.append({
+                "start": start_t,
+                "end": end_t,
+                "key": root,
+                "mode": mode,
+                "confidence": float(np.mean([b[3] for b in bin_roots[i:j]])),
+            })
+        i = j
+
+    if len(runs) < 2:
+        return []
+
+    # Reject cycling modulations: a structural key change introduces each root
+    # only once.  If any root appears in more than one run the track is cycling
+    # between tonalities (e.g. B → Ab → B → Ab) and the fallback should not
+    # activate.
+    root_seq = [r["key"] for r in runs]
+    if len(set(root_seq)) < len(root_seq):
+        return []
+
+    # Extend boundary runs to cover the full track; fill gaps between runs by
+    # splitting at the midpoint between adjacent confirmed ends/starts.
+    runs[0]["start"] = 0.0
+    runs[-1]["end"] = duration
+    for k in range(1, len(runs)):
+        mid = (runs[k - 1]["end"] + runs[k]["start"]) / 2.0
+        runs[k - 1]["end"] = mid
+        runs[k]["start"] = mid
+
+    return runs
 
 
 def _global_key_from_segments(key_segments: list[dict]) -> dict:
@@ -950,6 +1066,7 @@ def _percussion_presence(
     y_perc: np.ndarray | None = None,
     sr: int = 44100,
     perc_energy_ratio: float | None = None,
+    perc_ratio_p95: float | None = None,
 ) -> tuple[str, bool, float]:
     onset_mean = float(np.mean(onset_env))
     onset_p95 = float(np.percentile(onset_env, 95))
@@ -969,6 +1086,18 @@ def _percussion_presence(
         level = "high"
 
     low = level in {"none", "low"}
+
+    # Secondary no-drums gate: check whether any frame is *dominantly* percussive.
+    # Real drum hits push individual HPSS frames well above 0.5 percussive ratio;
+    # staccato synth attacks are brief and spectrally narrow, so even the 95th
+    # percentile of per-frame percussive ratio stays near the floor.
+    # Empirical separation: jettison (no drums, staccato synth) p95=0.501;
+    # all drums tracks p95 ≥ 0.620. Threshold at 0.55 gives clear headroom.
+    if perc_ratio_p95 is not None and perc_ratio_p95 < 0.55:
+        low = True
+        if level not in {"none", "low"}:
+            level = "low"
+
     confidence = float(np.clip(abs(score - 0.35) + 0.4, 0.0, 1.0))
     return level, low, confidence
 
@@ -1155,9 +1284,11 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         settings.harmonic_atk_threshold,
     )
 
+    perc_ratio_p95 = float(np.percentile(percussive_ratio_per_frame, 95))
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
         onset_env,
         perc_energy_ratio=perc_energy_ratio,
+        perc_ratio_p95=perc_ratio_p95,
     )
     _ = percussion_presence, percussion_conf
 
@@ -1167,6 +1298,10 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     form_sections = _build_form_sections(duration, rms, sr, hop_length)
 
     elapsed = (datetime.utcnow() - start).total_seconds()
+
+    # A no-drums track has no percussion-only intro by definition.
+    if low_percussion:
+        bars_4_4 = 0.0
 
     return {
         "global": {
