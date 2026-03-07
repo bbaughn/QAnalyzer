@@ -19,7 +19,7 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      bars_percussion: 22  # melody enters imperceptibly; algorithm detects ~beat 88
+      bars_percussion: 24
       swing: false
 
   - title: "Subterano"
