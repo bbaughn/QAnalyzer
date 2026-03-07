@@ -515,31 +515,43 @@ def _tuning_cents_from_offset(offset_semitones: float) -> int:
     return max(-49, min(50, cents))
 
 
-def _apply_section_tuning(sections: list[dict], y: np.ndarray, sr: int) -> list[dict]:
+def _apply_section_tuning(
+    sections: list[dict],
+    y: np.ndarray | None = None,
+    sr: int | None = None,
+    global_tuning_cents: int = 0,
+) -> list[dict]:
+    """Attach tuning fields to each section.
+
+    If *y* and *sr* are provided the global and per-section tuning are estimated
+    from the audio (original behaviour).  When only *global_tuning_cents* is
+    supplied (interpret-only path) that value is applied to every section.
+    """
     if not sections:
         return sections
 
-    try:
-        global_offset = float(librosa.estimate_tuning(y=y, sr=sr))
-    except Exception:  # noqa: BLE001
-        global_offset = 0.0
-    global_cents = _tuning_cents_from_offset(global_offset)
+    if y is not None and sr is not None:
+        try:
+            global_offset = float(librosa.estimate_tuning(y=y, sr=sr))
+        except Exception:  # noqa: BLE001
+            global_offset = 0.0
+        global_tuning_cents = _tuning_cents_from_offset(global_offset)
 
     tuned: list[dict] = []
     for seg in sections:
-        start = float(seg["start"])
-        end = float(seg["end"])
-        s = max(0, int(start * sr))
-        e = min(len(y), int(end * sr))
-        if e - s < max(2048, sr // 2):
-            cents = global_cents
-        else:
-            y_seg = y[s:e]
-            try:
-                seg_offset = float(librosa.estimate_tuning(y=y_seg, sr=sr))
-                cents = _tuning_cents_from_offset(seg_offset)
-            except Exception:  # noqa: BLE001
-                cents = global_cents
+        cents = global_tuning_cents
+        if y is not None and sr is not None:
+            start_t = float(seg["start"])
+            end_t = float(seg["end"])
+            s = max(0, int(start_t * sr))
+            e = min(len(y), int(end_t * sr))
+            if e - s >= max(2048, sr // 2):
+                y_seg = y[s:e]
+                try:
+                    seg_offset = float(librosa.estimate_tuning(y=y_seg, sr=sr))
+                    cents = _tuning_cents_from_offset(seg_offset)
+                except Exception:  # noqa: BLE001
+                    pass
         item = seg.copy()
         item["tuning"] = int(cents)
         item["tuning_rounded"] = int(round(cents / 25) * 25)
@@ -731,10 +743,19 @@ def _non_harmonic_segments(
     return segments
 
 
-def _percussion_presence(onset_env: np.ndarray, y_harm: np.ndarray, y_perc: np.ndarray, sr: int) -> tuple[str, bool, float]:
+def _percussion_presence(
+    onset_env: np.ndarray,
+    y_harm: np.ndarray | None = None,
+    y_perc: np.ndarray | None = None,
+    sr: int = 44100,
+    perc_energy_ratio: float | None = None,
+) -> tuple[str, bool, float]:
     onset_mean = float(np.mean(onset_env))
     onset_p95 = float(np.percentile(onset_env, 95))
-    perc_ratio = float(np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9))
+    if perc_energy_ratio is not None:
+        perc_ratio = perc_energy_ratio
+    else:
+        perc_ratio = float(np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9))
 
     score = 0.5 * min(1.0, perc_ratio / 0.7) + 0.5 * min(1.0, onset_p95 / 2.0)
     if score < 0.18:
@@ -786,9 +807,12 @@ def _swing_from_grid(beat_times: np.ndarray, onset_times: np.ndarray) -> tuple[b
     return bool(score > 0.45), score
 
 
-def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
-    start = datetime.utcnow()
+def extract_audio_features(path: str) -> dict:
+    """Phase 1: load audio and run all expensive librosa computations.
 
+    Returns a JSON-serializable dict of arrays that can be cached and passed
+    to interpret_features() without re-loading the audio file.
+    """
     y, sr = librosa.load(path, sr=settings.analysis_sr, mono=True)
     duration = float(librosa.get_duration(y=y, sr=sr))
 
@@ -799,10 +823,77 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
     onset_times = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, hop_length=hop_length, units="time")
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length)
-    if beat_frames.size > 1:
-        chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean)
-    else:
-        chroma_sync = chroma
+    chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean) if beat_frames.size > 1 else chroma
+
+    y_harm, y_perc = librosa.effects.hpss(y)
+    rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
+    rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop_length)[0]
+    rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
+    percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
+
+    beat_attack_sustain = _beat_attack_sustain_ratios(y, sr, beat_times)
+
+    try:
+        global_tuning_cents = _tuning_cents_from_offset(float(librosa.estimate_tuning(y=y, sr=sr)))
+    except Exception:  # noqa: BLE001
+        global_tuning_cents = 0
+
+    perc_energy_ratio = float(
+        np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9)
+    )
+
+    return {
+        "sr": int(sr),
+        "hop_length": hop_length,
+        "duration": duration,
+        "tempo_raw": float(tempo),
+        "beat_times": beat_times.tolist(),
+        "onset_times": onset_times.tolist(),
+        "onset_env": onset_env.tolist(),
+        "chroma_sync": chroma_sync.tolist(),
+        "percussive_ratio_per_frame": percussive_ratio_per_frame.tolist(),
+        "beat_attack_sustain": beat_attack_sustain,
+        "rms": rms.tolist(),
+        "global_tuning_cents": global_tuning_cents,
+        "perc_energy_ratio": perc_energy_ratio,
+    }
+
+
+def save_features(features: dict, path: str) -> None:
+    """Persist phase-1 features to disk as JSON."""
+    import json
+    from pathlib import Path
+    Path(path).write_text(json.dumps(features))
+
+
+def load_features(path: str) -> dict:
+    """Load phase-1 features previously saved by save_features()."""
+    import json
+    from pathlib import Path
+    return json.loads(Path(path).read_text())
+
+
+def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
+    """Phase 2: derive musical interpretation from pre-computed audio features.
+
+    This is the fast path — no audio file needed.  Changing thresholds in
+    app/config.py and re-running this function is sufficient for most tuning work.
+    """
+    start = datetime.utcnow()
+
+    sr = features["sr"]
+    hop_length = features["hop_length"]
+    duration = features["duration"]
+    tempo_raw = features["tempo_raw"]
+    beat_times = np.array(features["beat_times"])
+    onset_times = np.array(features["onset_times"])
+    onset_env = np.array(features["onset_env"])
+    chroma_sync = np.array(features["chroma_sync"])
+    percussive_ratio_per_frame = np.array(features["percussive_ratio_per_frame"])
+    beat_attack_sustain = features["beat_attack_sustain"]
+    rms = np.array(features["rms"])
+    global_tuning_cents = features["global_tuning_cents"]
+    perc_energy_ratio = features["perc_energy_ratio"]
 
     key_segments_raw, key_segments = _segment_key_timeline(chroma_sync, beat_times)
     global_key = _global_key_from_segments(key_segments_raw if key_segments_raw else key_segments)
@@ -817,21 +908,14 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
         fuzz_sec=settings.segment_boundary_fuzz_sec,
     )
     sections = _coalesce_sections_by_content(sections, settings.tempo_section_min_delta_bpm)
-    sections = _apply_section_tuning(sections, y=y, sr=sr)
+    sections = _apply_section_tuning(sections, global_tuning_cents=global_tuning_cents)
     for s in sections:
         s["tempo_bpm_rounded"] = int(round(s["tempo_bpm"])) if s.get("tempo_bpm") is not None else None
-    global_bpm = float(np.median([s["bpm"] for s in tempo_segments])) if tempo_segments else float(tempo)
+
+    global_bpm = float(np.median([s["bpm"] for s in tempo_segments])) if tempo_segments else float(tempo_raw)
     global_bpm_conf = (
         float(np.mean([s["confidence"] for s in tempo_segments])) if tempo_segments else 0.35
     )
-
-    y_harm, y_perc = librosa.effects.hpss(y)
-    rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
-    rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop_length)[0]
-    rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
-    percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
-
-    beat_attack_sustain = _beat_attack_sustain_ratios(y, sr, beat_times)
 
     bars_4_4, _, _, _, beat_tonal_conf, beat_perc_ratio = _find_harmonic_start(
         beat_times,
@@ -846,9 +930,7 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
 
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
         onset_env,
-        y_harm,
-        y_perc,
-        sr,
+        perc_energy_ratio=perc_energy_ratio,
     )
     _ = percussion_presence, percussion_conf
 
@@ -918,3 +1000,8 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
             "run_duration_sec": elapsed,
         },
     }
+
+
+def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
+    """Extract audio features and interpret them in one pass."""
+    return interpret_features(extract_audio_features(path), profile)
