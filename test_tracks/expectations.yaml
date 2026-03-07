@@ -68,6 +68,24 @@ tracks:
       bars_percussion: 0
       swing: true
 
+  - title: "Loose Jaw"
+    artist: "Roland Tings"
+    file: "test_tracks/loosejaw.wav"
+    expected:
+      bpm: 116
+      bpm_end: 116
+      key:
+        root: "Bb"
+        mode: "minor"
+      key_end:
+        root: "Bb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 16
+      swing: false
+
   - title: "Flute"
     artist: "Unknown"
     file: "test_tracks/flute.wav"

@@ -373,16 +373,27 @@ def _apply_segment_dorian_refinement(
 
 
 def _segment_key_timeline(chroma_sync: np.ndarray, beat_times: np.ndarray) -> tuple[list[dict], list[dict]]:
-    # Derive a global root hint from the full-track mean chroma.  In bass-driven
-    # music the tonic is the note with the highest long-term chroma energy (bass
-    # drone / repeating root bass hits dominate the chroma accumulation).  Using
-    # the peak-energy bin — rather than the Krumhansl correlation winner — avoids
-    # having the higher b6 weight in the minor profile override a track whose
-    # bassline is on a different root (e.g. A mixolydian, where the harmonic
-    # series of the A bass can inflate the b6 energy of Gb/F# minor, causing the
-    # correlation to mis-identify the root as Gb).
+    # Derive a global root hint from the full-track mean chroma.
+    #
+    # Strategy: prefer the Krumhansl correlation winner when it is nearly as
+    # energy-strong as the raw argmax (ratio ≥ 0.95).  Krumhansl is mode-aware
+    # and correctly handles cases where a prominent b3 bass note has higher raw
+    # energy than the tonic (e.g. a Bb-minor track with a heavy Db bass inflating
+    # the Db chroma bin above Bb).
+    #
+    # When the raw argmax has clearly dominant energy (ratio < 0.95), it is a
+    # reliable indicator of the true bass root and takes priority.  This handles
+    # tracks like A mixolydian where the bass A is so strong that Krumhansl is
+    # fooled into picking Gb/F# minor (A is the b3 of Gb in the Krumhansl minor
+    # profile, getting a high weight that outscores A mixolydian).
     global_chroma = np.mean(chroma_sync, axis=1)
-    global_root_idx = int(np.argmax(global_chroma))
+    argmax_idx = int(np.argmax(global_chroma))
+    global_key_est = _key_from_chroma(global_chroma)
+    krumhansl_idx = KEYS.index(global_key_est.key)
+    if global_chroma[krumhansl_idx] >= global_chroma[argmax_idx] * 0.95:
+        global_root_idx = krumhansl_idx
+    else:
+        global_root_idx = argmax_idx
 
     raw = _segment_key_timeline_raw(chroma_sync, beat_times, global_root_idx=global_root_idx)
     raw_coalesced = _coalesce_key_segments_same_label(raw)
@@ -832,6 +843,14 @@ def _find_harmonic_start(
     # transitional windows where some beats still have percussion transients
     # don't trigger a false early detection.
     idx_pass2 = _scan(require_perc=False, max_atk=atk_threshold * 0.5)
+    # Pass 2 is only informative when the opening window had elevated atk,
+    # i.e. a clear percussion-only intro existed before the harmonic entry.
+    # If atk is already uniformly low from beat 0 (e.g. a track with quiet,
+    # low-atk percussion throughout), pass 2 fires at the first beat with
+    # chroma variety regardless of the true harmonic entry — a false positive.
+    # In that case pass 1 (perc-ratio gate) is the correct signal; discard pass 2.
+    opening_atk_mean = float(np.mean(atk_arr[:consecutive]))
+    pass2_meaningful = opening_atk_mean >= atk_threshold * 0.5
     # Pass 0: check whether harmonic content is already present at beat 0,
     # i.e. drums and melody coexist from the very start with no drum-only intro.
     # We use the MEDIAN (not mean) of the opening window's atk values so that
@@ -869,7 +888,10 @@ def _find_harmonic_start(
     # a "clean" harmonic moment later in the track (e.g. a drum breakdown) that
     # is technically valid but is not the actual melody entry.  Earlier passes
     # represent better candidates for the true harmonic start.
-    candidates = [i for i in [idx_pass0, idx_pass1, idx_pass2] if i >= 0]
+    active_passes = [idx_pass0, idx_pass1]
+    if pass2_meaningful:
+        active_passes.append(idx_pass2)
+    candidates = [i for i in active_passes if i >= 0]
     idx = min(candidates) if candidates else 0
     start_idx = max(0, idx)
 
