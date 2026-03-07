@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EDM Analysis Console</title>
+    <title>QAnalyzer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -228,7 +228,7 @@
   <body>
     <main class="wrap">
       <section class="hero">
-        <h1>EDM Analysis Console</h1>
+        <h1>QAnalyzer</h1>
         <p class="sub">Paste a YouTube URL, submit analysis, and this page will auto-refresh status until the full report is ready.</p>
         <div class="submit-row">
           <input id="source" type="url" placeholder="https://www.youtube.com/watch?v=..." />
@@ -246,6 +246,7 @@
       const statusEl = document.getElementById("status");
       const resultsEl = document.getElementById("results");
       const heroSubDefault = "Paste a YouTube URL, submit analysis, and this page will auto-refresh status until the full report is ready.";
+      const pageTitleDefault = "QAnalyzer";
       const heroSubEl = document.querySelector(".sub");
 
       let activeJobId = null;
@@ -399,6 +400,7 @@
           ? result.sections
           : (Array.isArray(result.overall_segments) ? result.overall_segments : []);
         const track = result.track || {};
+        document.title = track.title ? `⭐ ${track.title}` : pageTitleDefault;
         if (track.title || track.artist) {
           const pieces = [];
           if (track.artist) pieces.push(track.artist);
