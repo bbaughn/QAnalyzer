@@ -141,6 +141,37 @@ tracks:
       bars_percussion: 0
       swing: true
 
+  - title: "Julia"
+    artist: "Uf0"
+    file: "test_tracks/julia.wav"
+    expected:
+      bpm: 145
+      bpm_end: 145
+      # FAILING: algorithm detects G phrygian / C minor instead of F minor.
+      # Root cause: F (the true tonic) has weak global chroma energy (0.375),
+      # while G (the supertonic/iim in F minor) dominates at 0.713. Both the
+      # cosine profile and argmax lock onto G as the global root. Per-window,
+      # C minor wins because C minor contains both the strong G (5th) and Ab
+      # (b6), outscoring F minor by 0.044. Even when root is forced to F, the
+      # minor→dorian disambiguation fires (D > Db × 1.1) giving F dorian.
+      # Fix requires low-frequency (bass) weighted chroma to suppress the
+      # prominent supertonic synth line and surface the true bass root F.
+      key:
+        root: "F"
+        mode: "minor"
+      key_end:
+        root: "F"
+        mode: "minor"
+      tuning: -25
+      tuning_end: -25
+      no_drums: false
+      bars_percussion: 0
+      # FAILING: algorithm detects 144, true BPM is 145. Off-by-one from
+      # mean-IBI rounding at this tempo.
+      bpm: 145
+      bpm_end: 145
+      swing: false
+
   - title: "Rain and Snow Mixture"
     artist: "Monolithic"
     file: "test_tracks/monolithic.wav"
