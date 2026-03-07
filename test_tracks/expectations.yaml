@@ -1,0 +1,42 @@
+tracks:
+
+  - title: "Crying Juno"
+    artist: "Matthias Meyer & Ryan Davis"
+    file: "test_tracks/juno_intro.wav"
+    full_file: "test_tracks/juno.wav"
+    # bpm_end matches tempo_bpm_rounded of the last section
+    # key / key_end match key+mode of the first / last section
+    # tuning / tuning_end match tuning_rounded of the first / last section
+    expected:
+      bpm: 120
+      bpm_end: 120
+      key:
+        root: "Eb"
+        mode: "minor"
+      key_end:
+        root: "Eb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 24
+      swing: false
+
+  - title: "Rain and Snow Mixture"
+    artist: "Monolithic"
+    file: "test_tracks/monolithic_intro.wav"
+    full_file: "test_tracks/monolithic.wav"
+    expected:
+      bpm: 120
+      bpm_end: 120
+      key:
+        root: "Bb"
+        mode: "dorian"
+      key_end:
+        root: "Bb"
+        mode: "dorian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 8
+      swing: false
