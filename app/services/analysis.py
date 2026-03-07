@@ -336,6 +336,42 @@ def _confirm_key_segments(raw_segments: list[dict]) -> list[dict]:
     return _coalesce_key_segments_same_label(confirmed)
 
 
+def _apply_segment_dorian_refinement(
+    segments: list[dict],
+    chroma_sync: np.ndarray,
+    beat_times: np.ndarray,
+    threshold: float = 1.02,
+) -> list[dict]:
+    """Reclassify 'minor' segments to 'dorian' using aggregate chroma evidence.
+
+    Per-window chroma is noisy — a single transient window with m6 > b6 can
+    incorrectly flip consecutive-window runs, preventing `_confirm_key_segments`
+    from forming a clean minor segment.  Instead this function computes mean
+    chroma across all beats *within* each confirmed segment and applies the
+    minor→dorian check at that coarser, more stable scale.
+
+    The m6/b6 ratio thresholds from empirical testing:
+      - flute (B root):   Ab/G  = 1.041  → dorian  ✓
+      - juno  (Eb root):  C/B   = 0.818  → stays minor ✓
+      - funky (Ab root):  F/E   = 0.953  → stays minor ✓
+    """
+    for seg in segments:
+        if seg.get("mode") != "minor":
+            continue
+        key_idx = KEYS.index(seg["key"])
+        # Collect beat indices within the segment time range.
+        mask = (beat_times >= seg["start"]) & (beat_times <= seg["end"])
+        beat_cols = np.where(mask)[0]
+        if beat_cols.size == 0:
+            continue
+        seg_chroma = np.mean(chroma_sync[:, beat_cols], axis=1)
+        m6_idx = (key_idx + 9) % 12
+        b6_idx = (key_idx + 8) % 12
+        if seg_chroma[m6_idx] > seg_chroma[b6_idx] * threshold:
+            seg["mode"] = "dorian"
+    return segments
+
+
 def _segment_key_timeline(chroma_sync: np.ndarray, beat_times: np.ndarray) -> tuple[list[dict], list[dict]]:
     # Derive a global root hint from the full-track mean chroma.  In bass-driven
     # music the tonic is the note with the highest long-term chroma energy (bass
@@ -351,6 +387,11 @@ def _segment_key_timeline(chroma_sync: np.ndarray, beat_times: np.ndarray) -> tu
     raw = _segment_key_timeline_raw(chroma_sync, beat_times, global_root_idx=global_root_idx)
     raw_coalesced = _coalesce_key_segments_same_label(raw)
     confirmed = _confirm_key_segments(raw)
+    # Refine minor→dorian using aggregate chroma within each segment.
+    # Per-window detection is too noisy for this distinction; segment-mean
+    # chroma gives a reliable m6/b6 ratio (see _apply_segment_dorian_refinement).
+    confirmed = _apply_segment_dorian_refinement(confirmed, chroma_sync, beat_times)
+    raw_coalesced = _apply_segment_dorian_refinement(raw_coalesced, chroma_sync, beat_times)
     return raw_coalesced, confirmed
 
 
@@ -774,7 +815,10 @@ def _find_harmonic_start(
             atk_window = atk_arr[i : i + consecutive]
             tonal_ok = np.all(tonal_window >= threshold)
             perc_ok = np.mean(perc_window) < perc_threshold
-            atk_ok = np.mean(atk_window) < max_atk
+            # Require both mean AND peak atk below thresholds.  A window where
+            # even one beat has a very high atk (drum fill, crash) is still a
+            # transitional zone and should not count as the harmonic entry.
+            atk_ok = np.mean(atk_window) < max_atk and np.max(atk_window) < max_atk * 2
             n_cols = chroma_sync.shape[1]
             chroma_window = chroma_sync[:, i : min(i + consecutive, n_cols)]
             dom = np.argmax(chroma_window, axis=0)

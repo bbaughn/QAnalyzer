@@ -50,12 +50,12 @@ tracks:
     expected:
       bpm: 125
       bpm_end: 125
-      # FAILING: Krumhansl-Schmuckler correlation gives Ab minor a 0.037 score advantage
-      # over B minor. Ab/G# chroma bin has high energy (0.640) and lands at the 6.33
-      # tonic-weight position in the Ab minor profile. B has higher raw energy (0.692)
-      # but distributes across multiple profile positions less favorably. Fix requires
-      # downbeat/bass weighting so the rhythmically-emphasized root (B) wins over
-      # coincidental spectral overlap at Ab.
+      # FAILING: Root correctly detects as B (global_root_idx constraint), but B mixolydian
+      # consistently wins per-window over B minor in the Krumhansl correlation. The b7
+      # (A) has enough chroma energy to tip the mixolydian profile over minor for most
+      # windows. Fix requires either per-beat downbeat/bass weighting to boost the minor
+      # 3rd (D) relative to b7, or a post-hoc check that penalises modes inconsistent
+      # with the track's harmonic character.
       key:
         root: "B"
         mode: "minor"
@@ -66,6 +66,25 @@ tracks:
       tuning_end: 0
       no_drums: false
       bars_percussion: 0
+      swing: true
+
+  - title: "Flute"
+    artist: "Unknown"
+    file: "test_tracks/flute.wav"
+    intro_file: "test_tracks/flute_intro.wav"
+    expected:
+      bpm: 122
+      bpm_end: 122
+      key:
+        root: "B"
+        mode: "dorian"
+      key_end:
+        root: "B"
+        mode: "dorian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 16
       swing: true
 
   - title: "Rain and Snow Mixture"
