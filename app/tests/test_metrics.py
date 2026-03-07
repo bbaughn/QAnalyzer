@@ -32,15 +32,20 @@ def test_harmonic_start_bars_count():
     beat16_frame = int(beat_times[16] * sr / hop_length)
     perc_ratio[beat16_frame:] = 0.1
 
+    # Attack/sustain: high for percussion beats, low for harmonic beats.
+    beat_atk = [2.0 if i < 16 else 0.5 for i in range(beat_times.size)]
+
     bars, rounded, start_time, conf, _, _ = _find_harmonic_start(
         beat_times=beat_times,
         chroma_sync=chroma_sync,
         percussive_ratio_per_frame=perc_ratio,
+        beat_attack_sustain=beat_atk,
         sr=sr,
         hop_length=hop_length,
         threshold=0.1,
         consecutive=4,
         perc_threshold=0.40,
+        atk_threshold=1.0,
     )
 
     assert bars == 4.0

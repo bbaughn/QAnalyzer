@@ -68,6 +68,18 @@ def _key_from_chroma(chroma_vec: np.ndarray) -> KeyEstimate:
     if best_mode == "locrian":
         best_mode = "minor"
 
+    # The Krumhansl correlation cannot reliably distinguish minor from dorian
+    # because the two modes share 6 of their 7 scale degrees.  The only
+    # distinguishing note is the 6th: major (dorian) vs. lowered (minor).
+    # When the correlation picks minor, compare the chroma energy at the major
+    # 6th (+9 semitones from root) against the b6 (+8 semitones).  If the
+    # major 6th is clearly stronger the mode is dorian, not minor.
+    if best_mode == "minor":
+        m6_idx = (best_key_idx + 9) % 12
+        b6_idx = (best_key_idx + 8) % 12
+        if chroma_vec[m6_idx] > chroma_vec[b6_idx] * 1.1:
+            best_mode = "dorian"
+
     return KeyEstimate(key=KEYS[best_key_idx], mode=best_mode, confidence=best_score)
 
 
@@ -655,14 +667,16 @@ def _find_harmonic_start(
     beat_times: np.ndarray,
     chroma_sync: np.ndarray,
     percussive_ratio_per_frame: np.ndarray,
+    beat_attack_sustain: list[float],
     sr: int,
     hop_length: int,
     threshold: float,
     consecutive: int,
     perc_threshold: float,
-) -> tuple[float, float, float, int]:
+    atk_threshold: float,
+) -> tuple[float, float, float, int, list, list]:
     if beat_times.size < 2 or chroma_sync.shape[1] == 0:
-        return 0.0, 0.0, 0.0, 0
+        return 0.0, 0.0, 0.0, 0, [], []
 
     # Per-beat tonal confidence from key correlation.
     tonal_conf = []
@@ -678,22 +692,58 @@ def _find_harmonic_start(
         if e <= s:
             e = s + 1
         per_beat_perc.append(float(np.mean(percussive_ratio_per_frame[s:e])))
-    # Pad to match tonal_conf length if needed.
     while len(per_beat_perc) < len(tonal_conf):
         per_beat_perc.append(per_beat_perc[-1] if per_beat_perc else 1.0)
     perc_arr = np.array(per_beat_perc, dtype=float)
 
-    # A window is "harmonic" when tonal confidence is sustained AND the signal is
-    # not predominantly percussive.  Using both signals prevents drum overtones
-    # (which can produce spuriously high key-correlation scores) from being
-    # mistaken for harmonic content.
-    start_idx = 0
-    for i in range(0, max(1, tonal_conf_arr.size - consecutive + 1)):
-        tonal_window = tonal_conf_arr[i : i + consecutive]
-        perc_window = perc_arr[i : i + consecutive]
-        if np.all(tonal_window >= threshold) and np.mean(perc_window) < perc_threshold:
-            start_idx = i
-            break
+    # Per-beat attack/sustain ratio (pre-computed in phase 1).
+    atk_list = list(beat_attack_sustain)
+    while len(atk_list) < len(tonal_conf):
+        atk_list.append(atk_list[-1] if atk_list else 1.0)
+    atk_arr = np.array(atk_list[:len(tonal_conf)], dtype=float)
+
+    def _scan(require_perc: bool, max_atk: float) -> int:
+        """Return start beat index of first harmonic window, or -1 if none found.
+
+        Pass 1 (require_perc=True): both perc_ratio AND attack/sustain must be
+        below their thresholds — handles tracks where HPSS clearly separates
+        percussion from harmony.
+
+        Pass 2 (require_perc=False): only attack/sustain is checked — fallback
+        for tracks with tonal/ringy percussion that fools HPSS (low perc_ratio
+        throughout).  Uses a stricter atk threshold to avoid triggering on
+        transitional windows that mix percussion and harmonic beats.
+        """
+        for i in range(0, max(1, tonal_conf_arr.size - consecutive + 1)):
+            tonal_window = tonal_conf_arr[i : i + consecutive]
+            perc_window = perc_arr[i : i + consecutive]
+            atk_window = atk_arr[i : i + consecutive]
+            tonal_ok = np.all(tonal_window >= threshold)
+            perc_ok = np.mean(perc_window) < perc_threshold
+            atk_ok = np.mean(atk_window) < max_atk
+            if tonal_ok and atk_ok and (perc_ok or not require_perc):
+                return i
+        return -1
+
+    idx_pass1 = _scan(require_perc=True, max_atk=atk_threshold)
+    # Pass 2 uses a stricter atk ceiling (half of the pass-1 value) so that
+    # transitional windows where some beats still have percussion transients
+    # don't trigger a false early detection.
+    idx_pass2 = _scan(require_perc=False, max_atk=atk_threshold * 0.5)
+    # Take the earlier of the two passes.  Pass 1 can find a "clean" harmonic
+    # moment later in the track (e.g. a drum breakdown) that is technically
+    # valid but is not the actual melody entry.  If pass 2 (atk-only) found
+    # an earlier window it is the better candidate for the true harmonic start.
+    if idx_pass1 < 0 and idx_pass2 < 0:
+        idx = 0
+    elif idx_pass1 < 0:
+        idx = idx_pass2
+    elif idx_pass2 < 0:
+        idx = idx_pass1
+    else:
+        idx = min(idx_pass1, idx_pass2)
+    start_idx = max(0, idx)
+
     start_time = float(beat_times[min(start_idx, beat_times.size - 1)])
     start_conf = float(np.mean(tonal_conf_arr[start_idx : start_idx + consecutive]))
 
@@ -921,11 +971,13 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         beat_times,
         chroma_sync,
         percussive_ratio_per_frame,
+        beat_attack_sustain,
         sr,
         hop_length,
         settings.harmonic_conf_threshold,
         settings.harmonic_consecutive_beats,
         settings.harmonic_perc_threshold,
+        settings.harmonic_atk_threshold,
     )
 
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(

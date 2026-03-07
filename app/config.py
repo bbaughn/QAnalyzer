@@ -16,6 +16,7 @@ class Settings:
     harmonic_conf_threshold: float = float(os.getenv("HARMONIC_CONF_THRESHOLD", "0.32"))
     harmonic_consecutive_beats: int = int(os.getenv("HARMONIC_CONSECUTIVE_BEATS", "8"))
     harmonic_perc_threshold: float = float(os.getenv("HARMONIC_PERC_THRESHOLD", "0.40"))
+    harmonic_atk_threshold: float = float(os.getenv("HARMONIC_ATK_THRESHOLD", "1.0"))
     tempo_section_min_delta_bpm: float = float(os.getenv("TEMPO_SECTION_MIN_DELTA_BPM", "2.0"))
     key_change_min_persist_windows: int = int(os.getenv("KEY_CHANGE_MIN_PERSIST_WINDOWS", "3"))
     key_change_conf_margin: float = float(os.getenv("KEY_CHANGE_CONF_MARGIN", "0.08"))
