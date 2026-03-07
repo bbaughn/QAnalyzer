@@ -24,6 +24,8 @@ class Settings:
     segment_boundary_fuzz_sec: float = float(os.getenv("SEGMENT_BOUNDARY_FUZZ_SEC", "0.75"))
     queue_poll_seconds: float = float(os.getenv("QUEUE_POLL_SECONDS", "3.0"))
     worker_loop_sleep_seconds: float = float(os.getenv("WORKER_LOOP_SLEEP_SECONDS", "2.0"))
+    tempo_correction_tg_ratio: float = float(os.getenv("TEMPO_CORRECTION_TG_RATIO", "0.75"))
+    perc_hpss_rescue_atk_p95: float = float(os.getenv("PERC_HPSS_RESCUE_ATK_P95", "2.0"))
 
 
 settings = Settings()

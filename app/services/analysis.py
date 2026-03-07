@@ -11,6 +11,12 @@ from app.config import settings
 
 KEYS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 
+# Modes that share a minor third above the root (b3 in scale degree terms).
+# Within this family, transitions like minor↔dorian are tonal colour shifts,
+# not structural modulations, and should be coalesced.
+_MINOR_FAMILY: frozenset[str] = frozenset({"minor", "dorian", "phrygian", "aeolian", "locrian"})
+_MAJOR_FAMILY: frozenset[str] = frozenset({"major", "lydian", "mixolydian", "ionian"})
+
 # Krumhansl-style chroma profiles for all 7 diatonic modes.
 # Each array starts on C; np.roll(profile, n) gives the profile rooted on KEYS[n].
 # Weights derived from Krumhansl (1990) for major/minor and adapted by scale-degree
@@ -820,6 +826,77 @@ def _coalesce_sections_by_content(sections: list[dict], min_tempo_delta_bpm: flo
     return merged
 
 
+def _tonal_family(mode: str) -> str:
+    if mode in _MINOR_FAMILY:
+        return "minor"
+    if mode in _MAJOR_FAMILY:
+        return "major"
+    return mode
+
+
+def _coalesce_same_root_mode_family(sections: list[dict]) -> list[dict]:
+    """Merge adjacent sections that share the same root and tonal family.
+
+    A track is extremely unlikely to "modulate" between minor modes (e.g.
+    minor → dorian) or between major modes (e.g. major → mixolydian) on the
+    same root — these are Krumhansl correlation noise, not real key changes.
+    Merge such adjacent pairs into one section using the mode of the
+    longer-lasting one.  BPM is duration-weighted across the merge.
+    """
+    if not sections:
+        return []
+    merged: list[dict] = [sections[0].copy()]
+    for sec in sections[1:]:
+        prev = merged[-1]
+        if (
+            prev.get("key") == sec.get("key")
+            and _tonal_family(prev.get("mode", "")) == _tonal_family(sec.get("mode", ""))
+            and _tonal_family(prev.get("mode", "")) in ("minor", "major")
+        ):
+            dur_prev = prev["end"] - prev["start"]
+            dur_cur = sec["end"] - sec["start"]
+            # Keep the mode of the longer section.
+            if dur_cur > dur_prev:
+                prev["mode"] = sec["mode"]
+            # Duration-weighted BPM.
+            bpm_prev = prev.get("tempo_bpm")
+            bpm_cur = sec.get("tempo_bpm")
+            if bpm_prev is not None and bpm_cur is not None:
+                prev["tempo_bpm"] = (bpm_prev * dur_prev + bpm_cur * dur_cur) / (dur_prev + dur_cur)
+            prev["end"] = sec["end"]
+        else:
+            merged.append(sec.copy())
+    return merged
+
+
+def _snap_sections_to_dominant_tempo(sections: list[dict], max_spread_bpm: float = 5.0) -> list[dict]:
+    """If all section BPMs fall within max_spread_bpm, snap them to the dominant.
+
+    Tracks produced on a sequencer have a single stable tempo; minor estimation
+    noise (e.g. arising from beat-grid quantisation or a tempo correction factor)
+    should not produce a spread of reported BPMs.  When the full spread is below
+    the threshold, all sections are snapped to the duration-weighted dominant so
+    that bpm and bpm_end always agree.
+    """
+    if not sections:
+        return sections
+    bpms = [s["tempo_bpm"] for s in sections if s.get("tempo_bpm") is not None]
+    if len(bpms) < 2 or max(bpms) - min(bpms) >= max_spread_bpm:
+        return sections
+    # Use the minimum BPM rather than the weighted average: estimation errors are
+    # systematically positive (mean IBI inflated by hop-grid quantisation; tempo
+    # correction factor may overshoot), so the lowest section BPM is the best
+    # approximation of the true tempo.
+    dominant = min(bpms)
+    result = []
+    for s in sections:
+        s = s.copy()
+        if s.get("tempo_bpm") is not None:
+            s["tempo_bpm"] = dominant
+        result.append(s)
+    return result
+
+
 def _build_form_sections(duration: float, rms: np.ndarray, sr: int, hop_length: int) -> list[dict]:
     if rms.size == 0:
         return []
@@ -1151,6 +1228,44 @@ def _swing_from_grid(beat_times: np.ndarray, onset_times: np.ndarray) -> tuple[b
     return bool(score > 0.45), score
 
 
+def _detect_tempo_correction_ratio(
+    onset_env: np.ndarray,
+    beat_times: np.ndarray,
+    sr: int,
+    hop_length: int,
+    tg_ratio_threshold: float = 0.75,
+) -> float:
+    """Return 0.75 if the beat tracker locked onto 4/3 × the true tempo.
+
+    This happens on grooves where the dominant transient grid sits at 4/3 the
+    musical quarter-note pulse.  The tempogram shows a strong peak at the
+    detected BPM and a nearly-as-strong peak at 3/4 of that BPM (the true
+    tempo).  When the 3/4 sub-harmonic carries at least `tg_ratio_threshold`
+    of the detected peak's energy, we correct downward by ×3/4.
+
+    Returns 1.0 (no correction) for all other cases.
+    """
+    if beat_times.size < 8:
+        return 1.0
+    detected_bpm = 60.0 / float(np.median(np.diff(beat_times)))
+    candidate_bpm = detected_bpm * 0.75
+
+    tg = librosa.feature.tempogram(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
+    tempo_axis = librosa.tempo_frequencies(tg.shape[0], sr=sr, hop_length=hop_length)
+    mean_tg = np.mean(tg, axis=1)
+    bw = 2.0
+
+    def _bpm_energy(target: float) -> float:
+        mask = np.abs(tempo_axis - target) < bw
+        return float(np.mean(mean_tg[mask])) if mask.any() else 0.0
+
+    e_det = _bpm_energy(detected_bpm)
+    e_34 = _bpm_energy(candidate_bpm)
+    if e_det > 0 and e_34 / e_det >= tg_ratio_threshold:
+        return 0.75
+    return 1.0
+
+
 def extract_audio_features(path: str) -> dict:
     """Phase 1: load audio and run all expensive librosa computations.
 
@@ -1254,6 +1369,21 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         _seg_beats = beat_times[(beat_times >= _seg["start"]) & (beat_times <= _seg["end"])]
         if _seg_beats.size >= 2:
             _seg["bpm"] = float(60.0 / np.mean(np.diff(_seg_beats)))
+
+    # Detect and correct 4/3 tempo tracking error (beat tracker locked onto
+    # triplet subdivisions of the true quarter-note pulse).  When the tempogram
+    # 3/4 sub-harmonic is nearly as strong as the detected peak, scale all BPMs
+    # down by ×3/4.  bars_4_4 is corrected after _find_harmonic_start below.
+    _tempo_correction = _detect_tempo_correction_ratio(
+        onset_env, beat_times, sr, hop_length,
+        tg_ratio_threshold=settings.tempo_correction_tg_ratio,
+    )
+    if _tempo_correction != 1.0:
+        for _seg in tempo_segments:
+            _seg["bpm"] *= _tempo_correction
+        for _seg in raw_tempo_segments:
+            _seg["bpm"] *= _tempo_correction
+
     sections = _build_sections(
         tempo_segments=tempo_segments,
         key_segments=key_segments,
@@ -1262,6 +1392,8 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         fuzz_sec=settings.segment_boundary_fuzz_sec,
     )
     sections = _coalesce_sections_by_content(sections, settings.tempo_section_min_delta_bpm)
+    sections = _coalesce_same_root_mode_family(sections)
+    sections = _snap_sections_to_dominant_tempo(sections)
     sections = _apply_section_tuning(sections, global_tuning_cents=global_tuning_cents)
     for s in sections:
         s["tempo_bpm_rounded"] = int(round(s["tempo_bpm"])) if s.get("tempo_bpm") is not None else None
@@ -1284,11 +1416,22 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         settings.harmonic_atk_threshold,
     )
 
+    if _tempo_correction != 1.0:
+        bars_4_4 *= _tempo_correction
+
     perc_ratio_p95 = float(np.percentile(percussive_ratio_per_frame, 95))
+    beat_atk_p95 = float(np.percentile(beat_attack_sustain, 95))
+    # When beat attack transients are very sharp (high atk_p95), the track
+    # likely has real drums whose HPSS separation is poor (e.g. heavily
+    # compressed or resonant drum machines).  Skip the perc_ratio_p95 no-drums
+    # gate in that case and rely on the onset-energy score alone.
+    _effective_perc_ratio_p95 = (
+        perc_ratio_p95 if beat_atk_p95 < settings.perc_hpss_rescue_atk_p95 else None
+    )
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
         onset_env,
         perc_energy_ratio=perc_energy_ratio,
-        perc_ratio_p95=perc_ratio_p95,
+        perc_ratio_p95=_effective_perc_ratio_p95,
     )
     _ = percussion_presence, percussion_conf
 
