@@ -166,8 +166,6 @@ tracks:
       tuning_end: -25
       no_drums: false
       bars_percussion: 0
-      # FAILING: algorithm detects 144, true BPM is 145. Off-by-one from
-      # mean-IBI rounding at this tempo.
       bpm: 145
       bpm_end: 145
       swing: false
