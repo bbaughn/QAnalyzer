@@ -333,7 +333,7 @@
 
           return {
             section: `S${idx} [${fmt(sec.start, 2)}-${fmt(sec.end, 2)}]`,
-            combined: `${fmt(sec.tempo_bpm, 1)} bpm, ${sec.key ?? "-"} ${sec.mode ?? ""}`.trim(),
+            combined: `${sec.tempo_bpm_rounded ?? fmt(sec.tempo_bpm, 1)} bpm, ${sec.key ?? "-"} ${sec.mode ?? ""}`.trim(),
             from_tempo: tempoInputs || "-",
             from_key: keyInputs || "-",
           };
@@ -415,12 +415,12 @@
               <tbody>
                 <tr><td>Swing</td><td>${global.swing ? "true" : "false"}</td></tr>
                 <tr><td>No Drums</td><td>${global.no_drums ? "true" : "false"}</td></tr>
-                <tr><td>Bars Percussion</td><td>${fmt(global.bars_percussion)}</td></tr>
+                <tr><td>Bars Percussion</td><td>${global.bars_percussion_rounded ?? fmt(global.bars_percussion)}</td></tr>
               </tbody>
             </table>
           </article>
 
-          ${timelineCard("Sections", sections, ["start", "end", "tempo_bpm", "key", "mode", "tuning", "change_reasons"])}
+          ${timelineCard("Sections", sections, ["start", "end", "tempo_bpm_rounded", "key", "mode", "tuning_rounded", "change_reasons"])}
           ${debugDisclosure(result, sections)}
 
           <article class="card wide">

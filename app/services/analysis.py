@@ -9,7 +9,7 @@ import numpy as np
 
 from app.config import settings
 
-KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+KEYS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 
 # Krumhansl-style chroma profiles for all 7 diatonic modes.
 # Each array starts on C; np.roll(profile, n) gives the profile rooted on KEYS[n].
@@ -62,6 +62,11 @@ def _key_from_chroma(chroma_vec: np.ndarray) -> KeyEstimate:
                 best_score = score
                 best_key_idx = shift
                 best_mode = mode_name
+
+    # Locrian is theoretically valid but vanishingly rare as a real key centre;
+    # treat it as minor to avoid spurious classifications.
+    if best_mode == "locrian":
+        best_mode = "minor"
 
     return KeyEstimate(key=KEYS[best_key_idx], mode=best_mode, confidence=best_score)
 
@@ -537,6 +542,7 @@ def _apply_section_tuning(sections: list[dict], y: np.ndarray, sr: int) -> list[
                 cents = global_cents
         item = seg.copy()
         item["tuning"] = int(cents)
+        item["tuning_rounded"] = int(round(cents / 25) * 25)
         tuned.append(item)
     return tuned
 
@@ -812,6 +818,8 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
     )
     sections = _coalesce_sections_by_content(sections, settings.tempo_section_min_delta_bpm)
     sections = _apply_section_tuning(sections, y=y, sr=sr)
+    for s in sections:
+        s["tempo_bpm_rounded"] = int(round(s["tempo_bpm"])) if s.get("tempo_bpm") is not None else None
     global_bpm = float(np.median([s["bpm"] for s in tempo_segments])) if tempo_segments else float(tempo)
     global_bpm_conf = (
         float(np.mean([s["confidence"] for s in tempo_segments])) if tempo_segments else 0.35
@@ -856,6 +864,7 @@ def analyze_audio_file(path: str, profile: str = "edm_v1") -> dict:
             "swing": bool(swing_feel),
             "no_drums": bool(low_percussion),
             "bars_percussion": float(bars_4_4),
+            "bars_percussion_rounded": int(round(bars_4_4)),
         },
         "sections": sections,
         "debug": {
