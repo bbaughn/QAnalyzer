@@ -52,6 +52,10 @@ def compare(result: dict, expected: dict) -> list[tuple]:
     # no_drums
     _check("no_drums", g.get("no_drums"), expected.get("no_drums"), results)
 
+    # no_key
+    if "no_key" in expected:
+        _check("no_key", g.get("no_key", False), expected["no_key"], results)
+
     # swing
     _check("swing", g.get("swing"), expected.get("swing"), results)
 

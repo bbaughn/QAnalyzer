@@ -1664,10 +1664,24 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     if low_percussion:
         bars_4_4 = 0.0
 
+    # Detect atonal / no-key tracks: count pitch classes that win more than 2%
+    # of beat windows.  Real harmonic tracks have 5+ competitive PCs; tracks
+    # whose chroma is driven entirely by tuned percussion (e.g. 808 toms) have
+    # ≤4 because one or two fixed pitches dominate every window.
+    _dominant_pc = chroma_sync.argmax(axis=0)
+    _pc_fracs = np.bincount(_dominant_pc, minlength=12) / max(_dominant_pc.size, 1)
+    _n_competitive_pcs = int((_pc_fracs > 0.02).sum())
+    no_key = _n_competitive_pcs <= settings.no_key_max_competitive_pcs
+    if no_key:
+        for s in sections:
+            s["key"] = None
+            s["mode"] = None
+
     return {
         "global": {
             "swing": bool(swing_feel),
             "no_drums": bool(low_percussion),
+            "no_key": bool(no_key),
             "bars_percussion": float(bars_4_4),
             "bars_percussion_rounded": (
                 0 if bars_4_4 < 0.9 else

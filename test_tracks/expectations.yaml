@@ -206,6 +206,17 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Melchom"
+    artist: "Bostoro Pesopeo"
+    file: "test_tracks/melchom.wav"
+    expected:
+      bpm: 120
+      bpm_end: 120
+      no_drums: false
+      no_key: true
+      bars_percussion: 40
+      swing: false
+
   - title: "Lindwurm"
     artist: "Todd Terje"
     file: "test_tracks/lindwurm.wav"

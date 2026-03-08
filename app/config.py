@@ -28,6 +28,7 @@ class Settings:
     perc_hpss_rescue_atk_p95: float = float(os.getenv("PERC_HPSS_RESCUE_ATK_P95", "2.0"))
     min_section_key_sec: float = float(os.getenv("MIN_SECTION_KEY_SEC", "30.0"))
     min_section_tempo_sec: float = float(os.getenv("MIN_SECTION_TEMPO_SEC", "30.0"))
+    no_key_max_competitive_pcs: int = int(os.getenv("NO_KEY_MAX_COMPETITIVE_PCS", "4"))
 
 
 settings = Settings()
