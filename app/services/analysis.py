@@ -897,6 +897,107 @@ def _snap_sections_to_dominant_tempo(sections: list[dict], max_spread_bpm: float
     return result
 
 
+def _key_pitch_classes(key: str, mode: str) -> frozenset:
+    """Return the set of absolute pitch classes for a given key/mode."""
+    _MODE_INTERVALS: dict[str, list[int]] = {
+        "major":      [0, 2, 4, 5, 7, 9, 11],
+        "minor":      [0, 2, 3, 5, 7, 8, 10],
+        "dorian":     [0, 2, 3, 5, 7, 9, 10],
+        "mixolydian": [0, 2, 4, 5, 7, 9, 10],
+        "phrygian":   [0, 1, 3, 5, 7, 8, 10],
+        "locrian":    [0, 1, 3, 5, 6, 8, 10],
+        "lydian":     [0, 2, 4, 6, 7, 9, 11],
+    }
+    root = KEYS.index(key) if key in KEYS else 0
+    intervals = _MODE_INTERVALS.get(mode, _MODE_INTERVALS["major"])
+    return frozenset((root + i) % 12 for i in intervals)
+
+
+def _drop_short_key_sections(sections: list[dict], min_sec: float = 30.0) -> list[dict]:
+    """Absorb key sections shorter than min_sec into their harmonically closest neighbor.
+
+    In EDM a section lasting under 30 seconds is almost always an intro/outro
+    artifact or detection noise rather than a genuine modulation.  The short
+    section is merged into whichever adjacent section (a) is at least min_sec
+    long, and (b) shares the most pitch classes with the short section.  When
+    both neighbors qualify and are tied on pitch-class overlap, the longer
+    neighbor wins.
+
+    Runs to convergence so that stacked short intro sections are fully
+    collapsed in one call.
+    """
+    if len(sections) <= 1:
+        return sections
+
+    sections = [s.copy() for s in sections]
+    changed = True
+    while changed:
+        changed = False
+        for i, sec in enumerate(sections):
+            if sec["end"] - sec["start"] >= min_sec:
+                continue
+
+            left = sections[i - 1] if i > 0 else None
+            right = sections[i + 1] if i + 1 < len(sections) else None
+            left_dur = (left["end"] - left["start"]) if left else 0.0
+            right_dur = (right["end"] - right["start"]) if right else 0.0
+            left_ok = left is not None and left_dur >= min_sec
+            right_ok = right is not None and right_dur >= min_sec
+
+            if not left_ok and not right_ok:
+                continue  # no eligible neighbor — leave it
+
+            sec_pcs = _key_pitch_classes(sec.get("key", "C"), sec.get("mode", "major"))
+            left_shared = len(sec_pcs & _key_pitch_classes(left["key"], left["mode"])) if left_ok else -1
+            right_shared = len(sec_pcs & _key_pitch_classes(right["key"], right["mode"])) if right_ok else -1
+
+            absorb_left = left_ok and (
+                not right_ok
+                or left_shared > right_shared
+                or (left_shared == right_shared and left_dur >= right_dur)
+            )
+
+            if absorb_left:
+                left["end"] = sec["end"]
+                # Refresh boundary flags on the section now adjacent to the extended left.
+                if right is not None:
+                    _refresh_boundary(right, left)
+            else:
+                right["start"] = sec["start"]
+                _refresh_boundary(right, left)
+
+            sections.pop(i)
+            changed = True
+            break  # restart scan with updated list
+
+    return sections
+
+
+def _refresh_boundary(section: dict, prev: dict | None) -> None:
+    """Recalculate starts_with_* flags on *section* given its new predecessor."""
+    if prev is None:
+        section["starts_with_key_change"] = False
+        section["starts_with_tempo_change"] = False
+        section["change_reasons"] = []
+        return
+    section["starts_with_key_change"] = (
+        prev.get("key") != section.get("key")
+        or prev.get("mode") != section.get("mode")
+    )
+    p_bpm = prev.get("tempo_bpm")
+    s_bpm = section.get("tempo_bpm")
+    section["starts_with_tempo_change"] = (
+        p_bpm is not None and s_bpm is not None
+        and abs(float(p_bpm) - float(s_bpm)) >= 2.0
+    )
+    reasons = []
+    if section["starts_with_key_change"]:
+        reasons.append("key")
+    if section["starts_with_tempo_change"]:
+        reasons.append("tempo")
+    section["change_reasons"] = reasons
+
+
 def _build_form_sections(duration: float, rms: np.ndarray, sr: int, hop_length: int) -> list[dict]:
     if rms.size == 0:
         return []
@@ -1453,6 +1554,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     sections = _coalesce_sections_by_content(sections, settings.tempo_section_min_delta_bpm)
     sections = _coalesce_same_root_mode_family(sections)
     sections = _snap_sections_to_dominant_tempo(sections)
+    sections = _drop_short_key_sections(sections, min_sec=settings.min_section_key_sec)
     sections = _apply_section_tuning(sections, global_tuning_cents=global_tuning_cents)
     for s in sections:
         s["tempo_bpm_rounded"] = int(round(s["tempo_bpm"])) if s.get("tempo_bpm") is not None else None

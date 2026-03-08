@@ -188,6 +188,28 @@ tracks:
       bars_percussion: 0
       swing: true
 
+  - title: "Glycol"
+    artist: ""
+    file: "test_tracks/glycol.wav"
+    expected:
+      bpm: 142
+      bpm_end: 142
+      # Intro has ~20s of Eb minor before settling into Ab minor.
+      # Eb minor and Ab minor share all 7 pitch classes (both modes of Cb major),
+      # so the short intro section is correctly absorbed into Ab minor by
+      # _drop_short_key_sections.
+      key:
+        root: "Ab"
+        mode: "minor"
+      key_end:
+        root: "Ab"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Rain and Snow Mixture"
     artist: "Monolithic"
     file: "test_tracks/monolithic.wav"

@@ -9,6 +9,7 @@ from app.services.analysis import (
     _confirm_key_segments,
     _dominant_key_label,
     _dominant_tempo_in_interval,
+    _drop_short_key_sections,
     _find_harmonic_start,
     _local_tempo_segments,
     _percussion_presence,
@@ -266,6 +267,76 @@ def test_section_coalesce_ignores_subthreshold_tempo_drift():
     assert merged[0]["start"] == 0.0
     assert merged[0]["end"] == 60.0
     assert merged[1]["start"] == 60.0
+
+
+def test_drop_short_key_sections_absorbs_into_harmonically_closest():
+    # 20s Eb minor intro followed by 300s Ab minor — mirrors the Glycol track.
+    # Eb minor and Ab minor share all 7 pitch classes (both modes of Cb major),
+    # so the short section should be absorbed into the long one.
+    sections = [
+        {
+            "start": 0.0, "end": 20.0, "key": "Eb", "mode": "minor",
+            "tempo_bpm": 142.0, "starts_with_key_change": False,
+            "starts_with_tempo_change": False, "change_reasons": [],
+        },
+        {
+            "start": 20.0, "end": 320.0, "key": "Ab", "mode": "minor",
+            "tempo_bpm": 142.0, "starts_with_key_change": True,
+            "starts_with_tempo_change": False, "change_reasons": ["key"],
+        },
+    ]
+    result = _drop_short_key_sections(sections, min_sec=30.0)
+    assert len(result) == 1
+    assert result[0]["key"] == "Ab"
+    assert result[0]["mode"] == "minor"
+    assert result[0]["start"] == 0.0
+    assert result[0]["end"] == 320.0
+
+
+def test_drop_short_key_sections_prefers_closer_neighbor():
+    # Short C major section between long G major and long F# minor.
+    # G major shares 5 PCs with C major; F# minor shares 2 PCs with C major.
+    # Should absorb into G major.
+    sections = [
+        {
+            "start": 0.0, "end": 120.0, "key": "G", "mode": "major",
+            "tempo_bpm": 120.0, "starts_with_key_change": False,
+            "starts_with_tempo_change": False, "change_reasons": [],
+        },
+        {
+            "start": 120.0, "end": 140.0, "key": "C", "mode": "major",
+            "tempo_bpm": 120.0, "starts_with_key_change": True,
+            "starts_with_tempo_change": False, "change_reasons": ["key"],
+        },
+        {
+            "start": 140.0, "end": 320.0, "key": "F#", "mode": "minor",
+            "tempo_bpm": 120.0, "starts_with_key_change": True,
+            "starts_with_tempo_change": False, "change_reasons": ["key"],
+        },
+    ]
+    result = _drop_short_key_sections(sections, min_sec=30.0)
+    assert len(result) == 2
+    assert result[0]["key"] == "G"
+    assert result[0]["end"] == 140.0
+    assert result[1]["key"] == "F#"
+
+
+def test_drop_short_key_sections_leaves_alone_when_no_long_neighbor():
+    # If neither neighbor is long enough, the short section is kept.
+    sections = [
+        {
+            "start": 0.0, "end": 25.0, "key": "D", "mode": "minor",
+            "tempo_bpm": 120.0, "starts_with_key_change": False,
+            "starts_with_tempo_change": False, "change_reasons": [],
+        },
+        {
+            "start": 25.0, "end": 40.0, "key": "A", "mode": "minor",
+            "tempo_bpm": 120.0, "starts_with_key_change": True,
+            "starts_with_tempo_change": False, "change_reasons": ["key"],
+        },
+    ]
+    result = _drop_short_key_sections(sections, min_sec=30.0)
+    assert len(result) == 2
 
 
 def test_dominant_tempo_in_interval_weighted():
