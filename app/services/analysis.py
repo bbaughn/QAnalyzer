@@ -154,7 +154,8 @@ def _dedup_tempo_windows(segments: list[dict]) -> list[dict]:
 
 
 def _local_tempo_segments(beat_times: np.ndarray) -> list[dict]:
-    return _coalesce_tempo_segments(_raw_tempo_windows(beat_times), settings.tempo_section_min_delta_bpm)
+    segs = _coalesce_tempo_segments(_raw_tempo_windows(beat_times), settings.tempo_section_min_delta_bpm)
+    return _drop_short_tempo_segments(segs, settings.min_section_tempo_sec, settings.tempo_section_min_delta_bpm)
 
 
 def _coalesce_tempo_segments(segments: list[dict], min_delta_bpm: float) -> list[dict]:
@@ -178,12 +179,61 @@ def _coalesce_tempo_segments(segments: list[dict], min_delta_bpm: float) -> list
                 prev["bpm"] = float((prev["bpm"] + seg["bpm"]) / 2.0)
                 prev["confidence"] = float((prev["confidence"] + seg["confidence"]) / 2.0)
             else:
+                # Overlapping windows mean the previous segment's end may extend
+                # past the new segment's start.  Trim to avoid overlap so that
+                # downstream section builders see clean, non-overlapping ranges.
+                if seg["start"] < prev["end"]:
+                    prev["end"] = seg["start"]
                 merged.append(seg.copy())
         if len(merged) == len(segments):
             break
         segments = merged
 
     return merged
+
+
+def _drop_short_tempo_segments(segments: list[dict], min_sec: float, min_delta_bpm: float) -> list[dict]:
+    """Remove tempo segments shorter than min_sec that are sandwiched between
+    same-BPM neighbors.
+
+    Hop-grid quantization in the beat tracker can produce a brief phantom
+    segment whose BPM differs from both neighbors by more than min_delta_bpm
+    (so normal coalescing doesn't absorb it) while those neighbors agree with
+    each other (within min_delta_bpm).  A computer-produced track at a fixed
+    tempo is the canonical example: two consecutive 16-beat windows straddle a
+    region where the median IBI rounds to one frame fewer, yielding e.g. 136 BPM
+    between two long 132.51 BPM segments.  Such artifacts are always shorter than
+    a musical phrase (< 30 s) and always have same-BPM neighbors.
+
+    Runs to convergence in case multiple adjacent short segments exist.
+    """
+    if len(segments) <= 1:
+        return segments
+
+    segments = [s.copy() for s in segments]
+    changed = True
+    while changed:
+        changed = False
+        for i, seg in enumerate(segments):
+            if seg["end"] - seg["start"] >= min_sec:
+                continue
+            left = segments[i - 1] if i > 0 else None
+            right = segments[i + 1] if i + 1 < len(segments) else None
+            if left is None or right is None:
+                continue
+            if abs(left["bpm"] - right["bpm"]) >= min_delta_bpm:
+                continue  # neighbors don't agree — keep the segment
+            # Merge: extend left to cover the short segment and the right,
+            # then drop both the short segment and the right.
+            left["end"] = right["end"]
+            left["bpm"] = float((left["bpm"] + right["bpm"]) / 2.0)
+            left["confidence"] = float((left["confidence"] + right["confidence"]) / 2.0)
+            segments.pop(i + 1)  # drop right
+            segments.pop(i)      # drop short
+            changed = True
+            break
+
+    return segments
 
 
 def _segment_key_timeline_raw(
@@ -1519,16 +1569,23 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
 
     raw_tempo_segments = _dedup_tempo_windows(_raw_tempo_windows(beat_times))
     tempo_segments = _local_tempo_segments(beat_times)
-    # Recompute each segment's BPM as the mean IBI of all beats within it.
+    # Recompute each segment's BPM as the mean IBI of the clean hop-grid beats.
     # The median-based window BPMs used during coalescing are robust for segment
     # boundary detection, but when the beat tracker quantises positions to the
     # STFT hop grid the median systematically picks the shorter IBI in a bimodal
     # (alternating short/long) distribution, biasing BPM upward by ~1.  The mean
-    # IBI across the full segment corrects this without affecting segment structure.
+    # of clean IBIs (within ±1.5 hops of the median) corrects this: the two
+    # neighbouring hop-grid values differ by exactly one hop so both are included,
+    # while spurious short IBIs from false beat detections are excluded.
+    _hop_sec = hop_length / sr
     for _seg in tempo_segments:
         _seg_beats = beat_times[(beat_times >= _seg["start"]) & (beat_times <= _seg["end"])]
         if _seg_beats.size >= 2:
-            _seg["bpm"] = float(60.0 / np.mean(np.diff(_seg_beats)))
+            _ibis = np.diff(_seg_beats)
+            _med = float(np.median(_ibis))
+            _clean = _ibis[np.abs(_ibis - _med) <= 1.5 * _hop_sec]
+            if _clean.size >= 2:
+                _seg["bpm"] = float(60.0 / np.mean(_clean))
 
     # Detect and correct 4/3 tempo tracking error (beat tracker locked onto
     # triplet subdivisions of the true quarter-note pulse).  When the tempogram

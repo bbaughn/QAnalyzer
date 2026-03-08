@@ -97,10 +97,18 @@ def _yt_dlp_cmd_prefix() -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def _normalize_topic_artist(artist: str | None) -> str | None:
+    if not artist:
+        return artist
+    cleaned = artist.strip()
+    return re.sub(r"\s*-\s*topic\s*$", "", cleaned, flags=re.IGNORECASE).strip()
+
+
 def _derive_artist_title(raw_title: str, uploader: str | None) -> tuple[str | None, str | None]:
+    uploader_norm = _normalize_topic_artist(uploader)
     title = (raw_title or "").strip()
     if not title:
-        return None, uploader
+        return None, uploader_norm
 
     # Strip bracketed descriptors (e.g. [Official Video], [HD], [XYZ Records]).
     title = re.sub(r"\[[^\]]*\]", "", title).strip()
@@ -111,7 +119,7 @@ def _derive_artist_title(raw_title: str, uploader: str | None) -> tuple[str | No
     if quote_match:
         quoted = quote_match.group(1).strip()
         remainder = re.sub(r"[\"“']([^\"”']+)[\"”']", "", title).strip(" -|:")
-        artist = remainder if remainder else uploader
+        artist = remainder if remainder else uploader_norm
         return quoted or None, artist or None
 
     # Common pattern: Artist - Title
@@ -122,7 +130,7 @@ def _derive_artist_title(raw_title: str, uploader: str | None) -> tuple[str | No
         if left and right:
             return right, left
 
-    return title, uploader
+    return title, uploader_norm
 
 
 def _extract_youtube_metadata(source: str) -> dict:

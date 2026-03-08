@@ -37,3 +37,15 @@ def test_youtube_cache_key_normalizes_watch_variants():
     c = "https://youtu.be/Ylgvl8d2NX4"
     assert ingestion._youtube_cache_key(a) == ingestion._youtube_cache_key(b)
     assert ingestion._youtube_cache_key(a) == ingestion._youtube_cache_key(c)
+
+
+def test_derive_artist_title_uses_topic_channel_as_artist_when_title_is_song_only():
+    title, artist = ingestion._derive_artist_title("Some Song", "Some Artist - Topic")
+    assert title == "Some Song"
+    assert artist == "Some Artist"
+
+
+def test_derive_artist_title_strips_topic_case_insensitive():
+    title, artist = ingestion._derive_artist_title("Another Song", "Another Artist - TOPIC")
+    assert title == "Another Song"
+    assert artist == "Another Artist"

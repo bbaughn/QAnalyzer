@@ -447,6 +447,9 @@
         try {
           const job = await fetchJson(`/v1/jobs/${jobId}`);
           setStatus(`Job ${job.job_id} status: ${job.status}${stageStatusText(job)}`);
+          if (job.status === "queued" || job.status === "running") {
+            document.title = "Working...";
+          }
 
           if (job.status === "succeeded") {
             if (pollTimer) clearInterval(pollTimer);
@@ -461,11 +464,13 @@
             if (pollTimer) clearInterval(pollTimer);
             const msg = job.failure ? `${job.failure.code}: ${job.failure.message}` : "Unknown failure";
             setStatus(`Job ${job.job_id} failed - ${msg}`, "failed");
+            document.title = pageTitleDefault;
             submitBtn.disabled = false;
           }
         } catch (err) {
           if (pollTimer) clearInterval(pollTimer);
           setStatus(`Polling error: ${err.message}`, "failed");
+          document.title = pageTitleDefault;
           submitBtn.disabled = false;
         }
       }
@@ -480,6 +485,7 @@
         submitBtn.disabled = true;
         resultsEl.style.display = "none";
         setStatus("Submitting analysis job...");
+        document.title = "Working...";
 
         try {
           const submission = await fetchJson("/v1/analyze", {

@@ -189,7 +189,7 @@ tracks:
       swing: true
 
   - title: "Glycol"
-    artist: ""
+    artist: "DJ Life"
     file: "test_tracks/glycol.wav"
     expected:
       bpm: 142
@@ -207,6 +207,24 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "Lindwurm"
+    artist: "Todd Terje"
+    file: "test_tracks/lindwurm.wav"
+    expected:
+      bpm: 132
+      bpm_end: 132
+      key:
+        root: "E"
+        mode: "minor"
+      key_end:
+        root: "E"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: true
       bars_percussion: 0
       swing: false
 
