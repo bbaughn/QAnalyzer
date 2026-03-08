@@ -1676,6 +1676,8 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         for s in sections:
             s["key"] = None
             s["mode"] = None
+            s["tuning_cents"] = None
+            s["tuning_rounded"] = None
 
     return {
         "global": {
