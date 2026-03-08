@@ -206,6 +206,53 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Helix"
+    artist: "Tracey"
+    file: "test_tracks/helix.wav"
+    expected:
+      bpm: 136
+      bpm_end: 136
+      # FAILING: algorithm detects B dorian (root = strongest chroma PC, B at 13.1%).
+      # True tonic is D; B is the 6th degree of D major and the most frequent melody
+      # note. Fix requires bass-weighted chroma so D (the bass root) outranks B.
+      key:
+        root: "D"
+        mode: "major"
+      key_end:
+        root: "D"
+        mode: "major"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "Sometimes I Feel Like I'm Ruining Songs"
+    artist: "Vegyn"
+    file: "test_tracks/vegyn.wav"
+    expected:
+      bpm: 136
+      bpm_end: 136
+      key:
+        root: "Eb"
+        mode: "minor"
+      # FAILING: second half detected as A lydian due to increased A/E chroma energy.
+      # Eb minor and A lydian share 5/7 PCs; algorithm tips to A lydian when the
+      # harmonic content shifts. Fix likely requires a stronger key-stability prior
+      # or bass-weighted chroma.
+      key_end:
+        root: "Eb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: true entry is bar 4 (~7s) but detector finds bar 14 (~26s).
+      # High-atk drum transients at beats 12, 13, 20, 22 break the consecutive-8
+      # requirement, delaying detection. Fix requires a majority (not all-or-nothing)
+      # consecutive check.
+      bars_percussion: 4
+      swing: false
+
   - title: "Melchom"
     artist: "Bostoro Pesopeo"
     file: "test_tracks/melchom.wav"

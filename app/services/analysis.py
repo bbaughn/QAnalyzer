@@ -1390,8 +1390,19 @@ def _swing_from_grid(beat_times: np.ndarray, onset_times: np.ndarray) -> tuple[b
     # zero such beats.  This captures breakbeat swing that does not raise
     # the median appreciably because the majority of sub-beat onsets are
     # still close to 0.5.
+    #
+    # Two false-positive guards:
+    #   • late_frac > 0.25: too many late onsets to be breakbeat swing —
+    #     this is a regular subdivision (e.g. 16th-note hi-hat landing at
+    #     75% of the beat on almost every beat).
+    #   • late_std < 0.015: the late onsets are mechanically quantised to a
+    #     fixed grid position (tightly clustered ≈ 0.75); genuine swing
+    #     timing always has more beat-to-beat variation (std ≥ 0.018).
     late_frac = float(np.mean(r > 0.65))
-    late_score = max(0.0, (late_frac - 0.04) / 0.08)
+    _late_r = r[r > 0.65]
+    _late_std = float(np.std(_late_r)) if _late_r.size > 1 else 0.0
+    _late_ok = late_frac <= 0.25 and _late_std >= 0.015
+    late_score = max(0.0, (late_frac - 0.04) / 0.08) if _late_ok else 0.0
 
     score = float(np.clip(max(median_score, late_score), 0.0, 1.0))
     return bool(score > 0.45), score
