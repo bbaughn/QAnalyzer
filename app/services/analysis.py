@@ -1669,7 +1669,10 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
             "swing": bool(swing_feel),
             "no_drums": bool(low_percussion),
             "bars_percussion": float(bars_4_4),
-            "bars_percussion_rounded": int(round(bars_4_4)),
+            "bars_percussion_rounded": (
+                0 if bars_4_4 < 0.9 else
+                min([0,1,2,3,4]+[8*k for k in range(1,50)], key=lambda x: abs(x-bars_4_4))
+            ),
         },
         "sections": sections,
         "debug": {

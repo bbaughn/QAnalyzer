@@ -19,10 +19,6 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: algorithm detects beat 88 (22 bars) instead of beat 96 (24 bars).
-      # The melody entry at beat 88 passes all thresholds (chroma, perc_ratio, atk) slightly
-      # earlier than the true 24-bar mark. Would need tighter atk/perc thresholds or a
-      # bar-boundary snapping pass to push detection forward to the next 8-beat boundary.
       bars_percussion: 24
       swing: false
 
