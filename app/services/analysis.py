@@ -1252,21 +1252,27 @@ def _detect_tempo_correction_ratio(
     sr: int,
     hop_length: int,
     tg_ratio_threshold: float = 0.75,
+    tg_ratio_threshold_32: float = 0.85,
 ) -> float:
-    """Return 0.75 if the beat tracker locked onto 4/3 × the true tempo.
+    """Return a correction multiplier when the beat tracker locked onto the wrong tempo.
 
-    This happens on grooves where the dominant transient grid sits at 4/3 the
-    musical quarter-note pulse.  The tempogram shows a strong peak at the
-    detected BPM and a nearly-as-strong peak at 3/4 of that BPM (the true
-    tempo).  When the 3/4 sub-harmonic carries at least `tg_ratio_threshold`
-    of the detected peak's energy, we correct downward by ×3/4.
+    Two error modes are detected:
+
+    ×0.75 (4/3 downward): beat tracker locked onto 4/3 × the true tempo.
+    The tempogram shows a strong peak at detected BPM and a nearly-as-strong
+    peak at 3/4 × detected (the true tempo).  Fires when the 3/4 energy is
+    at least `tg_ratio_threshold` of the detected energy.
+
+    ×1.5 (3/2 upward): beat tracker locked onto 2/3 × the true tempo.
+    The tempogram shows a strong peak at detected BPM and a nearly-as-strong
+    peak at 3/2 × detected (the true tempo).  Fires when the 3/2 energy is
+    at least `tg_ratio_threshold_32` of the detected energy.
 
     Returns 1.0 (no correction) for all other cases.
     """
     if beat_times.size < 8:
         return 1.0
     detected_bpm = 60.0 / float(np.median(np.diff(beat_times)))
-    candidate_bpm = detected_bpm * 0.75
 
     tg = librosa.feature.tempogram(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
     tempo_axis = librosa.tempo_frequencies(tg.shape[0], sr=sr, hop_length=hop_length)
@@ -1278,9 +1284,24 @@ def _detect_tempo_correction_ratio(
         return float(np.mean(mean_tg[mask])) if mask.any() else 0.0
 
     e_det = _bpm_energy(detected_bpm)
-    e_34 = _bpm_energy(candidate_bpm)
-    if e_det > 0 and e_34 / e_det >= tg_ratio_threshold:
+    if e_det <= 0:
+        return 1.0
+
+    # Check 4/3 downward correction (detected is too fast).
+    # Suppress if the track shows a 3/2 ambiguity signature: when the tempogram
+    # has nearly equal energy at 2/3×detected (the true tempo for a 3/2-error
+    # track), the candidate at 0.75×detected is a false positive caused by
+    # broad tempogram peaks rather than a genuine 4/3 tracking error.
+    e_34 = _bpm_energy(detected_bpm * 0.75)
+    e_23 = _bpm_energy(detected_bpm * 0.667)
+    if e_34 / e_det >= tg_ratio_threshold and e_23 / e_det < tg_ratio_threshold_32:
         return 0.75
+
+    # Check 3/2 upward correction (detected is too slow)
+    e_32 = _bpm_energy(detected_bpm * 1.5)
+    if e_32 / e_det >= tg_ratio_threshold_32:
+        return 1.5
+
     return 1.0
 
 
@@ -1298,15 +1319,19 @@ def extract_audio_features(path: str) -> dict:
     tempo, beat_frames = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop_length)
 
-    # Detect and correct 4/3 tempo tracking error at extraction time so that
-    # chroma_sync is aligned to the true beat grid.  When the interpret phase
-    # later calls _detect_tempo_correction_ratio with the corrected beat_times
-    # (detected_bpm≈true, candidate≈3/4×true), the 3/4-subharmonic energy is
-    # low relative to the true peak, so the correction does not double-fire.
+    # Detect and correct 4/3 (downward) and 3/2 (upward) tempo tracking errors
+    # at extraction time so that chroma_sync is aligned to the true beat grid.
+    # After correction, detected_bpm≈true and neither candidate fires again,
+    # so double-correction is naturally prevented.
     if beat_times.size >= 8:
         _extraction_corr = _detect_tempo_correction_ratio(onset_env, beat_times, sr, hop_length)
         if _extraction_corr != 1.0:
-            _corrected_start_bpm = float(np.squeeze(tempo)) * _extraction_corr
+            # Use the BPM implied by beat_times (not tempo_raw) so that both
+            # upward (×1.5) and downward (×0.75) corrections target the right BPM.
+            # tightness=300 (vs the default 100) forces the tracker to commit to the
+            # corrected tempo prior rather than drifting back to the wrong grid.
+            _detected_bpm = 60.0 / float(np.median(np.diff(beat_times)))
+            _corrected_start_bpm = _detected_bpm * _extraction_corr
             _, beat_frames = librosa.beat.beat_track(
                 onset_envelope=onset_env, sr=sr, hop_length=hop_length,
                 start_bpm=_corrected_start_bpm,
