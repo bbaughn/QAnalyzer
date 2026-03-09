@@ -1322,8 +1322,8 @@ def _percussion_presence(
     sr: int = 44100,
     perc_energy_ratio: float | None = None,
     perc_ratio_p95: float | None = None,
+    beat_atk_p95: float | None = None,
 ) -> tuple[str, bool, float]:
-    onset_mean = float(np.mean(onset_env))
     onset_p95 = float(np.percentile(onset_env, 95))
     if perc_energy_ratio is not None:
         perc_ratio = perc_energy_ratio
@@ -1348,10 +1348,20 @@ def _percussion_presence(
     # percentile of per-frame percussive ratio stays near the floor.
     # Empirical separation: jettison (no drums, staccato synth) p95=0.501;
     # all drums tracks p95 ≥ 0.620. Threshold at 0.55 gives clear headroom.
-    if perc_ratio_p95 is not None and perc_ratio_p95 < 0.55:
-        low = True
-        if level not in {"none", "low"}:
-            level = "low"
+    #
+    # Two rescue paths bypass this gate when HPSS separation is unreliable:
+    # 1. High-attack rescue: very large per-beat attack/sustain ratios mean real
+    #    drum hits whose broadband energy confused HPSS.
+    # 2. Tonal-kick rescue: extremely low perc_ratio_p95 (< 0.35) combined with
+    #    a high primary score means resonant/tonal kicks that HPSS routed to the
+    #    harmonic component — the contradiction signals HPSS failure, not silence.
+    if perc_ratio_p95 is not None:
+        _high_atk = beat_atk_p95 is not None and beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95
+        _tonal_kick = perc_ratio_p95 < 0.35 and score > 0.55
+        if not (_high_atk or _tonal_kick) and perc_ratio_p95 < 0.55:
+            low = True
+            if level not in {"none", "low"}:
+                level = "low"
 
     confidence = float(np.clip(abs(score - 0.35) + 0.4, 0.0, 1.0))
     return level, low, confidence
@@ -1682,30 +1692,11 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
 
     perc_ratio_p95 = float(np.percentile(percussive_ratio_per_frame, 95))
     beat_atk_p95 = float(np.percentile(beat_attack_sustain, 95))
-    # The secondary no-drums gate (perc_ratio_p95 < 0.55) can be bypassed via
-    # two rescue paths:
-    #
-    # 1. High-attack rescue: when per-beat attack/sustain ratios are very large
-    #    the track has real drum hits whose HPSS separation is poor.
-    #
-    # 2. Tonal-kick rescue: when the HPSS percussive ratio is extremely low
-    #    (< 0.35) yet the primary onset-based score is high (> 0.55), the kicks
-    #    are very resonant/tonal and HPSS silently routes them to the harmonic
-    #    component.  In this case the contradicting signals (high onset = drums,
-    #    very low HPSS perc = "no drums") indicate HPSS failure rather than the
-    #    absence of drums.
-    _onset_p95 = float(np.percentile(onset_env, 95))
-    _primary_perc_score = 0.5 * min(1.0, perc_energy_ratio / 0.7) + 0.5 * min(1.0, _onset_p95 / 2.0)
-    _tonal_kick = perc_ratio_p95 < 0.35 and _primary_perc_score > 0.55
-    _effective_perc_ratio_p95 = (
-        None  # bypass secondary gate
-        if beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95 or _tonal_kick
-        else perc_ratio_p95
-    )
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
         onset_env,
         perc_energy_ratio=perc_energy_ratio,
-        perc_ratio_p95=_effective_perc_ratio_p95,
+        perc_ratio_p95=perc_ratio_p95,
+        beat_atk_p95=beat_atk_p95,
     )
     _ = percussion_presence, percussion_conf
 
