@@ -1732,6 +1732,24 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
             s["tempo_bpm"] = None
             s["tempo_bpm_rounded"] = None
         swing_feel = False
+        # Tempo boundaries are meaningless when BPM is unreliable.  Collapse
+        # consecutive sections that share the same key+mode into one so the
+        # caller sees a clean single section rather than many spurious splits.
+        collapsed: list[dict] = []
+        for s in sections:
+            if (
+                collapsed
+                and collapsed[-1].get("key") == s.get("key")
+                and collapsed[-1].get("mode") == s.get("mode")
+            ):
+                collapsed[-1]["end"] = s["end"]
+                collapsed[-1]["change_reasons"] = [
+                    r for r in collapsed[-1]["change_reasons"] if r != "tempo"
+                ]
+                collapsed[-1]["starts_with_tempo_change"] = False
+            else:
+                collapsed.append(s)
+        sections = collapsed
 
     # Detect atonal / no-key tracks: count pitch classes that win more than 2%
     # of beat windows.  Real harmonic tracks have 5+ competitive PCs; tracks

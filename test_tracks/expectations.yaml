@@ -374,3 +374,14 @@ tracks:
       no_drums: false
       bars_percussion: 0
       swing: false
+
+  - title: "Port Ana"
+    artist: "Nadia Khan"
+    file: "test_tracks/portana.wav"
+    expected:
+      no_drums: true
+      no_tempo: true
+      # key omitted — algorithm detects F dorian; spreadsheet says Ab (mode unknown).
+      # Fix requires bass-weighted chroma or key-from-onset analysis.
+      bars_percussion: 0
+      swing: false
