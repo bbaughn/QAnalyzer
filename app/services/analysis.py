@@ -1682,12 +1682,25 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
 
     perc_ratio_p95 = float(np.percentile(percussive_ratio_per_frame, 95))
     beat_atk_p95 = float(np.percentile(beat_attack_sustain, 95))
-    # When beat attack transients are very sharp (high atk_p95), the track
-    # likely has real drums whose HPSS separation is poor (e.g. heavily
-    # compressed or resonant drum machines).  Skip the perc_ratio_p95 no-drums
-    # gate in that case and rely on the onset-energy score alone.
+    # The secondary no-drums gate (perc_ratio_p95 < 0.55) can be bypassed via
+    # two rescue paths:
+    #
+    # 1. High-attack rescue: when per-beat attack/sustain ratios are very large
+    #    the track has real drum hits whose HPSS separation is poor.
+    #
+    # 2. Tonal-kick rescue: when the HPSS percussive ratio is extremely low
+    #    (< 0.35) yet the primary onset-based score is high (> 0.55), the kicks
+    #    are very resonant/tonal and HPSS silently routes them to the harmonic
+    #    component.  In this case the contradicting signals (high onset = drums,
+    #    very low HPSS perc = "no drums") indicate HPSS failure rather than the
+    #    absence of drums.
+    _onset_p95 = float(np.percentile(onset_env, 95))
+    _primary_perc_score = 0.5 * min(1.0, perc_energy_ratio / 0.7) + 0.5 * min(1.0, _onset_p95 / 2.0)
+    _tonal_kick = perc_ratio_p95 < 0.35 and _primary_perc_score > 0.55
     _effective_perc_ratio_p95 = (
-        perc_ratio_p95 if beat_atk_p95 < settings.perc_hpss_rescue_atk_p95 else None
+        None  # bypass secondary gate
+        if beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95 or _tonal_kick
+        else perc_ratio_p95
     )
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
         onset_env,
@@ -1732,7 +1745,20 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     _dominant_pc = chroma_sync.argmax(axis=0)
     _pc_fracs = np.bincount(_dominant_pc, minlength=12) / max(_dominant_pc.size, 1)
     _n_competitive_pcs = int((_pc_fracs > 0.02).sum())
-    no_key = (not no_tempo) and (_n_competitive_pcs <= settings.no_key_max_competitive_pcs)
+    # Guard against drum-contaminated chroma: when drums produce broadband
+    # transients, all 12 pitch classes are elevated nearly equally and the
+    # argmax is decided by noise rather than tonal content.  In such frames
+    # the winner's margin over the runner-up is tiny (~0.05) whereas genuine
+    # pitch concentration (e.g. tuned 808 toms) produces a large margin
+    # (~0.27+).  Only count the competitive-PC result as meaningful when the
+    # mean winner margin is above the threshold.
+    _chroma_sorted = np.sort(chroma_sync, axis=0)[::-1, :]
+    _winner_margin = float(np.mean(_chroma_sorted[0, :] - _chroma_sorted[1, :]))
+    no_key = (
+        (not no_tempo)
+        and (_n_competitive_pcs <= settings.no_key_max_competitive_pcs)
+        and (_winner_margin >= settings.no_key_min_winner_margin)
+    )
     if no_key:
         for s in sections:
             s["key"] = None

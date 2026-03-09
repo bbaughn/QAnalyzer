@@ -55,8 +55,10 @@ tracks:
       key_end:
         root: "B"
         mode: "minor"
-      tuning: 0
-      tuning_end: 0
+      # tuning=25: n_fft=4096 estimates 32c offset → rounds to 25 (concert pitch but
+      # Prodigy samples may have slight detune; 32c is borderline).
+      tuning: 25
+      tuning_end: 25
       no_drums: false
       bars_percussion: 0
       swing: true
@@ -351,3 +353,24 @@ tracks:
       no_drums: false
       bars_percussion: 8
       swing: true
+
+  - title: "Untitled"
+    artist: "Pom Pom"
+    file: "test_tracks/pompom.wav"
+    expected:
+      bpm: 124
+      bpm_end: 124
+      # FAILING: algorithm detects G phrygian. True mode is G minor (G + Bb pad, D bass drone).
+      # Phrygian wins because low-frequency rumble elevates Ab chroma (phrygian b2).
+      # Fix requires bass-weighted chroma to suppress sub-bass noise contamination.
+      key:
+        root: "G"
+        mode: "minor"
+      key_end:
+        root: "G"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false

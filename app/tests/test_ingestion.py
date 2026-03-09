@@ -49,3 +49,26 @@ def test_derive_artist_title_strips_topic_case_insensitive():
     title, artist = ingestion._derive_artist_title("Another Song", "Another Artist - TOPIC")
     assert title == "Another Song"
     assert artist == "Another Artist"
+
+
+def test_metadata_selection_prefers_title_and_topic_over_fallback_artist():
+    data = {
+        "title": "Primary Artist - Clean Title",
+        "uploader": "Wrong Artist - Topic",
+        "artist": "Description Artist",
+    }
+    title, artist = ingestion._select_artist_title_from_metadata(data)
+    assert title == "Clean Title"
+    assert artist == "Primary Artist"
+
+
+def test_metadata_selection_uses_fallback_artist_when_topic_missing():
+    data = {
+        "title": "Only Song Name",
+        "uploader": None,
+        "channel": None,
+        "artist": "Description Artist",
+    }
+    title, artist = ingestion._select_artist_title_from_metadata(data)
+    assert title == "Only Song Name"
+    assert artist == "Description Artist"

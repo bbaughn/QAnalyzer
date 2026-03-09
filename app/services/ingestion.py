@@ -133,6 +133,20 @@ def _derive_artist_title(raw_title: str, uploader: str | None) -> tuple[str | No
     return title, uploader_norm
 
 
+def _select_artist_title_from_metadata(data: dict) -> tuple[str | None, str | None]:
+    title_from_page = (data.get("title") or "").strip()
+    topic_artist = data.get("uploader") or data.get("channel")
+    parsed_title, parsed_artist = _derive_artist_title(title_from_page, topic_artist)
+
+    if parsed_title and parsed_artist:
+        return parsed_title, parsed_artist
+
+    fallback_title = (data.get("track") or title_from_page or "").strip() or None
+    fallback_artist_raw = data.get("artist") or data.get("creator") or topic_artist
+    fallback_artist = _normalize_topic_artist(fallback_artist_raw)
+    return parsed_title or fallback_title, parsed_artist or fallback_artist
+
+
 def _extract_youtube_metadata(source: str) -> dict:
     cmd = _yt_dlp_cmd_prefix() + [
         "--no-update",
@@ -157,9 +171,7 @@ def _extract_youtube_metadata(source: str) -> dict:
     except json.JSONDecodeError:
         return {"title": None, "artist": None, "source_url": source}
 
-    raw_title = (data.get("track") or data.get("title") or "").strip()
-    artist = (data.get("artist") or data.get("creator") or data.get("uploader") or data.get("channel"))
-    parsed_title, parsed_artist = _derive_artist_title(raw_title, artist)
+    parsed_title, parsed_artist = _select_artist_title_from_metadata(data)
     return {
         "title": parsed_title,
         "artist": parsed_artist,
