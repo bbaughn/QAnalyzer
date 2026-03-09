@@ -29,6 +29,7 @@ class Settings:
     min_section_key_sec: float = float(os.getenv("MIN_SECTION_KEY_SEC", "30.0"))
     min_section_tempo_sec: float = float(os.getenv("MIN_SECTION_TEMPO_SEC", "30.0"))
     no_key_max_competitive_pcs: int = int(os.getenv("NO_KEY_MAX_COMPETITIVE_PCS", "4"))
+    tempo_reliable_onset_cv_min: float = float(os.getenv("TEMPO_RELIABLE_ONSET_CV_MIN", "0.6"))
 
 
 settings = Settings()

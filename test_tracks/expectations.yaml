@@ -279,6 +279,16 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Incompleteness"
+    artist: "Rival Consoles"
+    file: "test_tracks/incompleteness.wav"
+    expected:
+      no_drums: true
+      no_tempo: true
+      no_key: true
+      bars_percussion: 0
+      swing: false
+
   - title: "It's Hard To Say"
     artist: "Eliphino"
     file: "test_tracks/eliphino.wav"

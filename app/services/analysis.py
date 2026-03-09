@@ -1707,6 +1707,19 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     if low_percussion:
         bars_4_4 = 0.0
 
+    # Detect tracks with no reliable tempo: when there are no drums AND the onset
+    # envelope is very smooth (low coefficient of variation), the beat tracker has
+    # nothing to lock onto and produces artefact beats from synth attacks or reverb
+    # tails.  Suppress section BPMs and swing so callers get None rather than a
+    # spurious fast tempo (e.g. 198 BPM for a droning ambient pad track).
+    _onset_cv = float(np.std(onset_env) / (np.mean(onset_env) + 1e-8))
+    no_tempo = bool(low_percussion and _onset_cv < settings.tempo_reliable_onset_cv_min)
+    if no_tempo:
+        for s in sections:
+            s["tempo_bpm"] = None
+            s["tempo_bpm_rounded"] = None
+        swing_feel = False
+
     # Detect atonal / no-key tracks: count pitch classes that win more than 2%
     # of beat windows.  Real harmonic tracks have 5+ competitive PCs; tracks
     # whose chroma is driven entirely by tuned percussion (e.g. 808 toms) have
@@ -1726,6 +1739,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         "global": {
             "swing": bool(swing_feel),
             "no_drums": bool(low_percussion),
+            "no_tempo": bool(no_tempo),
             "no_key": bool(no_key),
             "bars_percussion": float(bars_4_4),
             "bars_percussion_rounded": (
