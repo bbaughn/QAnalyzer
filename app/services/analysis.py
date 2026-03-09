@@ -816,7 +816,7 @@ def _apply_section_tuning(
 
     if y is not None and sr is not None:
         try:
-            global_offset = float(librosa.estimate_tuning(y=y, sr=sr))
+            global_offset = float(librosa.estimate_tuning(y=y, sr=sr, n_fft=4096))
         except Exception:  # noqa: BLE001
             global_offset = 0.0
         global_tuning_cents = _tuning_cents_from_offset(global_offset)
@@ -832,7 +832,7 @@ def _apply_section_tuning(
             if e - s >= max(2048, sr // 2):
                 y_seg = y[s:e]
                 try:
-                    seg_offset = float(librosa.estimate_tuning(y=y_seg, sr=sr))
+                    seg_offset = float(librosa.estimate_tuning(y=y_seg, sr=sr, n_fft=4096))
                     cents = _tuning_cents_from_offset(seg_offset)
                 except Exception:  # noqa: BLE001
                     pass
@@ -1523,7 +1523,7 @@ def extract_audio_features(path: str) -> dict:
     beat_attack_sustain = _beat_attack_sustain_ratios(y, sr, beat_times)
 
     try:
-        global_tuning_cents = _tuning_cents_from_offset(float(librosa.estimate_tuning(y=y, sr=sr)))
+        global_tuning_cents = _tuning_cents_from_offset(float(librosa.estimate_tuning(y=y, sr=sr, n_fft=4096)))
     except Exception:  # noqa: BLE001
         global_tuning_cents = 0
 
