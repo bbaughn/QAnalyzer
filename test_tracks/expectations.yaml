@@ -4,9 +4,6 @@ tracks:
     artist: "Matthias Meyer & Ryan Davis"
     file: "test_tracks/juno.wav"
     intro_file: "test_tracks/juno_intro.wav"
-    # bpm_end matches tempo_bpm_rounded of the last section
-    # key / key_end match key+mode of the first / last section
-    # tuning / tuning_end match tuning_rounded of the first / last section
     expected:
       bpm: 120
       bpm_end: 120
