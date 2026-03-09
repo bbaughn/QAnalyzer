@@ -395,9 +395,12 @@ tracks:
       # detection — snare-on-3 analysis or onset density relative to beat grid.
       bpm: 70
       bpm_end: 140
-      # FAILING: algorithm detects Db minor. Bb is the true root but has the
-      # lowest chroma energy (0.457) because the bass sits in low octaves; Db
-      # (the minor 3rd) dominates at 0.719. Fix requires bass-weighted chroma.
+      # FAILING: algorithm detects Db minor. Root cause is the halftime BPM error:
+      # 140 BPM beat-sync captures F and Bb during note decays in the first half,
+      # suppressing them (Bb 0.510→0.457, A 0.489→0.523) and flipping the mode
+      # discriminating degrees (3rd: F<E, 6th: Bb<A) from Db major to Db minor.
+      # Raw CQT chroma correctly points to Db major (= relative major of Bb minor).
+      # Fix halftime BPM → fixes mode. Root Db→Bb still requires further work.
       key:
         root: "Bb"
         mode: "minor"
