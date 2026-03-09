@@ -282,6 +282,24 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "It's Hard To Say"
+    artist: "Eliphino"
+    file: "test_tracks/eliphino.wav"
+    expected:
+      bpm: 133
+      bpm_end: 133
+      key:
+        root: "E"
+        mode: "minor"
+      key_end:
+        root: "E"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Pygmy"
     artist: "Kode9"
     file: "test_tracks/pygmy.wav"
