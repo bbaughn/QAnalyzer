@@ -385,3 +385,27 @@ tracks:
       # Fix requires bass-weighted chroma or key-from-onset analysis.
       bars_percussion: 0
       swing: false
+
+  - title: "Ghost of Akina (Aya 2010 All At Once Remix)"
+    artist: "Hodge"
+    file: "test_tracks/hodge.wav"
+    expected:
+      # FAILING: beat tracker finds 140 throughout. First half is halftime feel
+      # (snare on beat 3 of the 140 grid = 70 BPM groove). Fix requires halftime
+      # detection — snare-on-3 analysis or onset density relative to beat grid.
+      bpm: 70
+      bpm_end: 140
+      # FAILING: algorithm detects Db minor. Bb is the true root but has the
+      # lowest chroma energy (0.457) because the bass sits in low octaves; Db
+      # (the minor 3rd) dominates at 0.719. Fix requires bass-weighted chroma.
+      key:
+        root: "Bb"
+        mode: "minor"
+      key_end:
+        root: "Bb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
