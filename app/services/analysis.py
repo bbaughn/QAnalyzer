@@ -1724,10 +1724,15 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     # of beat windows.  Real harmonic tracks have 5+ competitive PCs; tracks
     # whose chroma is driven entirely by tuned percussion (e.g. 808 toms) have
     # ≤4 because one or two fixed pitches dominate every window.
+    #
+    # Exempt no_tempo tracks from this check: an ambient pad with only 2-3
+    # sustained notes (e.g. F and C droning) will have few competitive PCs but
+    # is genuinely harmonic.  The low-PC condition only arises from tuned
+    # percussion in rhythmic (non-ambient) contexts.
     _dominant_pc = chroma_sync.argmax(axis=0)
     _pc_fracs = np.bincount(_dominant_pc, minlength=12) / max(_dominant_pc.size, 1)
     _n_competitive_pcs = int((_pc_fracs > 0.02).sum())
-    no_key = _n_competitive_pcs <= settings.no_key_max_competitive_pcs
+    no_key = (not no_tempo) and (_n_competitive_pcs <= settings.no_key_max_competitive_pcs)
     if no_key:
         for s in sections:
             s["key"] = None

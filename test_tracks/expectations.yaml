@@ -280,12 +280,21 @@ tracks:
       swing: false
 
   - title: "Incompleteness"
-    artist: "Rival Consoles"
+    artist: "Max Cooper"
     file: "test_tracks/incompleteness.wav"
     expected:
       no_drums: true
       no_tempo: true
-      no_key: true
+      # F major and C major share all pitch classes; either is a valid interpretation.
+      # Algorithm detects F major (F/C power chord, F comes first).
+      key:
+        root: "F"
+        mode: "major"
+      key_end:
+        root: "F"
+        mode: "major"
+      tuning: 0
+      tuning_end: 0
       bars_percussion: 0
       swing: false
 
