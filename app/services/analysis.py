@@ -892,16 +892,27 @@ def _coalesce_same_root_mode_family(sections: list[dict]) -> list[dict]:
     same root — these are Krumhansl correlation noise, not real key changes.
     Merge such adjacent pairs into one section using the mode of the
     longer-lasting one.  BPM is duration-weighted across the merge.
+
+    Sections with significantly different BPMs are kept separate even if the
+    key family matches — a genuine tempo change (e.g. ritardando) should not be
+    collapsed into a blended BPM.
     """
     if not sections:
         return []
     merged: list[dict] = [sections[0].copy()]
     for sec in sections[1:]:
         prev = merged[-1]
+        bpm_prev = prev.get("tempo_bpm")
+        bpm_cur = sec.get("tempo_bpm")
+        if bpm_prev is not None and bpm_cur is not None:
+            tempo_close = abs(float(bpm_prev) - float(bpm_cur)) < settings.tempo_section_min_delta_bpm
+        else:
+            tempo_close = True
         if (
             prev.get("key") == sec.get("key")
             and _tonal_family(prev.get("mode", "")) == _tonal_family(sec.get("mode", ""))
             and _tonal_family(prev.get("mode", "")) in ("minor", "major")
+            and tempo_close
         ):
             dur_prev = prev["end"] - prev["start"]
             dur_cur = sec["end"] - sec["start"]
@@ -909,8 +920,6 @@ def _coalesce_same_root_mode_family(sections: list[dict]) -> list[dict]:
             if dur_cur > dur_prev:
                 prev["mode"] = sec["mode"]
             # Duration-weighted BPM.
-            bpm_prev = prev.get("tempo_bpm")
-            bpm_cur = sec.get("tempo_bpm")
             if bpm_prev is not None and bpm_cur is not None:
                 prev["tempo_bpm"] = (bpm_prev * dur_prev + bpm_cur * dur_cur) / (dur_prev + dur_cur)
             prev["end"] = sec["end"]
@@ -1598,19 +1607,42 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
             if _clean.size >= 2:
                 _seg["bpm"] = float(60.0 / np.mean(_clean))
 
-    # Detect and correct 4/3 tempo tracking error (beat tracker locked onto
-    # triplet subdivisions of the true quarter-note pulse).  When the tempogram
-    # 3/4 sub-harmonic is nearly as strong as the detected peak, scale all BPMs
-    # down by ×3/4.  bars_4_4 is corrected after _find_harmonic_start below.
+    # Detect and correct 4/3 / 3/2 tempo tracking error per segment.
+    #
+    # A global correction (applied uniformly to all segments) breaks tracks
+    # with a genuine tempo change where only one section has a 4/3 error.
+    # Example: a track at 133 BPM that ritardandos to 102 BPM will have the
+    # beat tracker lock onto 136 = 4/3×102 for the second half; the global
+    # tempogram then shows e(102)/e(136) ≈ 0.85, firing the 4/3 correction
+    # and wrongly rescaling the 133-BPM first section to ~99 BPM.
+    #
+    # Per-segment correction: compute the tempogram once, then for each
+    # segment independently check whether its BPM has a strong 3/4
+    # sub-harmonic.  The first section (132.51 BPM) scores e(99)/e(133) ≈
+    # 0.74 — just below threshold — while the second (136 BPM) scores 0.85
+    # and is correctly rescaled to 102.
+    #
+    # _tempo_correction_bars tracks whether the segment that contains the
+    # harmonic start was corrected, so bars_4_4 can be scaled accordingly.
+    # Use the global tempogram (averaged over the full track) and gate each
+    # segment's correction on whether its BPM is within min_delta_bpm of the
+    # globally detected median tempo.  Segments that belong to a genuinely
+    # different tempo region (e.g. the 133 BPM first half of a track that
+    # ritardandos to 102 while the beat tracker locks onto 136 = 4/3×102 for
+    # the second half) are left uncorrected; only the segments tracking the
+    # same grid error as the detected BPM receive the correction.
+    _detected_bpm_global = 60.0 / float(np.median(np.diff(beat_times)))
     _tempo_correction = _detect_tempo_correction_ratio(
         onset_env, beat_times, sr, hop_length,
         tg_ratio_threshold=settings.tempo_correction_tg_ratio,
     )
     if _tempo_correction != 1.0:
         for _seg in tempo_segments:
-            _seg["bpm"] *= _tempo_correction
+            if abs(_seg["bpm"] - _detected_bpm_global) < settings.tempo_section_min_delta_bpm:
+                _seg["bpm"] *= _tempo_correction
         for _seg in raw_tempo_segments:
-            _seg["bpm"] *= _tempo_correction
+            if abs(_seg["bpm"] - _detected_bpm_global) < settings.tempo_section_min_delta_bpm:
+                _seg["bpm"] *= _tempo_correction
 
     sections = _build_sections(
         tempo_segments=tempo_segments,
