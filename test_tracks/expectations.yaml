@@ -149,8 +149,10 @@ tracks:
       # C minor wins because C minor contains both the strong G (5th) and Ab
       # (b6), outscoring F minor by 0.044. Even when root is forced to F, the
       # minor→dorian disambiguation fires (D > Db × 1.1) giving F dorian.
-      # Fix requires low-frequency (bass) weighted chroma to suppress the
-      # prominent supertonic synth line and surface the true bass root F.
+      # Bass-weighted chroma does NOT fix this: F ranks 8th/12 (0.323) even
+      # in the C1-C3 sub-bass register. The supertonic synth dominates at all
+      # frequency bands. Fix requires harmonic function analysis (understanding
+      # scale degree roles), not just note density.
       key:
         root: "F"
         mode: "minor"
@@ -213,7 +215,10 @@ tracks:
       bpm_end: 136
       # FAILING: algorithm detects B dorian (root = strongest chroma PC, B at 13.1%).
       # True tonic is D; B is the 6th degree of D major and the most frequent melody
-      # note. Fix requires bass-weighted chroma so D (the bass root) outranks B.
+      # note. Bass-weighted chroma does NOT fix this: B scores 0.935 in the C1-C3
+      # sub-bass register while D is only 5th at 0.601 — the melody is strong enough
+      # to outrank the tonic at every frequency band. Fix requires harmonic function
+      # analysis (understanding scale degree roles), not just note density.
       key:
         root: "D"
         mode: "major"
@@ -237,8 +242,7 @@ tracks:
         mode: "minor"
       # FAILING: second half detected as A lydian due to increased A/E chroma energy.
       # Eb minor and A lydian share 5/7 PCs; algorithm tips to A lydian when the
-      # harmonic content shifts. Fix likely requires a stronger key-stability prior
-      # or bass-weighted chroma.
+      # harmonic content shifts. Fix likely requires a stronger key-stability prior.
       key_end:
         root: "Eb"
         mode: "minor"
