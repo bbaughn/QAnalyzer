@@ -428,7 +428,11 @@ def _apply_segment_dorian_refinement(
     return segments
 
 
-def _segment_key_timeline(chroma_sync: np.ndarray, beat_times: np.ndarray) -> tuple[list[dict], list[dict]]:
+def _segment_key_timeline(
+    chroma_sync: np.ndarray,
+    beat_times: np.ndarray,
+    global_tuning_cents: int = 0,
+) -> tuple[list[dict], list[dict]]:
     # Derive a global root hint from the full-track mean chroma.
     #
     # Strategy: prefer the Krumhansl correlation winner when it is nearly as
@@ -451,7 +455,62 @@ def _segment_key_timeline(chroma_sync: np.ndarray, beat_times: np.ndarray) -> tu
     else:
         global_root_idx = argmax_idx
 
-    raw = _segment_key_timeline_raw(chroma_sync, beat_times, global_root_idx=global_root_idx)
+    _p5_corrected = False  # set to True if the P5-above correction fires below
+
+    # "Detected root is the 5th" correction for minor keys near standard pitch.
+    #
+    # When Krumhansl and argmax agree on a minor root X but the b2 of X carries
+    # more chroma energy than the natural 2 of X, the track may be in a key
+    # where X is the dominant (5th) rather than the tonic.  The b2-of-X
+    # fingerprint works because the b2 of X equals the b6 of the candidate
+    # (X + 5), and the b6 is diatonic in minor while the natural 2 of X is not
+    # — so chroma[b2] > chroma[nat2] at the detected root is strong evidence
+    # the track is in the P4-above key.
+    #
+    # Tuning gate: large tuning offsets cause the tonic to spill energy into the
+    # adjacent semitone bin (the b2), triggering false positives.  Only apply
+    # the correction when tuning is within ±20 cents of standard pitch.
+    #
+    # Confirmed on: Alpaca (G→C minor, margin 1.4%) and
+    #               Deflection (G→C minor, margin 0.8%).
+    if (
+        global_root_idx == krumhansl_idx
+        and global_key_est.mode in {"minor", "locrian"}
+        and abs(global_tuning_cents) < 20
+    ):
+        _b2_idx = (global_root_idx + 1) % 12
+        _nat2_idx = (global_root_idx + 2) % 12
+        if global_chroma[_b2_idx] > global_chroma[_nat2_idx] * 1.25:
+            _cand_root = (global_root_idx + 5) % 12
+            _chroma_n = global_chroma / (np.linalg.norm(global_chroma) + 1e-9)
+            _minor_norm = next(p for n, p in _MODE_PROFILES_NORM if n == "minor")
+            _cand_score = float(np.dot(_chroma_n, np.roll(_minor_norm, _cand_root)))
+            _curr_score = float(np.dot(_chroma_n, np.roll(_minor_norm, global_root_idx)))
+            if _cand_score > _curr_score * 0.97:
+                global_root_idx = _cand_root
+                _p5_corrected = True
+
+    # When the P5-above correction fires the per-window constrained call must
+    # always override the unconstrained estimate, so raise the margin to 1.0
+    # (confidence is bounded to [0, 1], so this forces the corrected root).
+    _window_margin = 1.0 if _p5_corrected else 0.015
+
+    raw = _segment_key_timeline_raw(
+        chroma_sync, beat_times,
+        global_root_idx=global_root_idx,
+        global_root_margin=_window_margin,
+    )
+    # When the P5-above correction fires, the constrained call forces root to
+    # the corrected pitch class but the mode may come out as lydian (because
+    # the Krumhansl lydian profile gives its highest weight to the *original*
+    # dominant note, which is now being treated as the 5th of the corrected
+    # root).  Override all windows on the corrected root to "minor" so that
+    # downstream dorian refinement has the right base mode to work from.
+    if _p5_corrected:
+        _cand_key = KEYS[global_root_idx]
+        for _seg in raw:
+            if _seg["key"] == _cand_key and _seg["mode"] != "minor":
+                _seg["mode"] = "minor"
     raw_coalesced = _coalesce_key_segments_same_label(raw)
     confirmed = _confirm_key_segments(raw)
     # Fallback: if _confirm_key_segments collapses the track to a single segment
@@ -1594,7 +1653,9 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     global_tuning_cents = features["global_tuning_cents"]
     perc_energy_ratio = features["perc_energy_ratio"]
 
-    key_segments_raw, key_segments = _segment_key_timeline(chroma_sync, beat_times)
+    key_segments_raw, key_segments = _segment_key_timeline(
+        chroma_sync, beat_times, global_tuning_cents=global_tuning_cents
+    )
     global_key = _global_key_from_segments(key_segments_raw if key_segments_raw else key_segments)
 
     raw_tempo_segments = _dedup_tempo_windows(_raw_tempo_windows(beat_times))
