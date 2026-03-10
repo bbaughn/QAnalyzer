@@ -423,14 +423,6 @@ tracks:
     expected:
       bpm: 114
       bpm_end: 114
-      # FAILING: algorithm detects G minor. True key is C minor (Cm/Fm arpeggio).
-      # G is the 5th of C minor and appears in both chords (Cm: C,Eb,G; Fm7: F,Ab,C,Eb),
-      # dominating the chroma at 0.830. The Krumhansl tonic weight for G minor (+1.31)
-      # overcomes the Ab evidence for C minor (-0.76) by a margin of only 0.31/21.4 (1.4%).
-      # The deciding factor is F# (0.585), likely CQT spectral leakage from G, which
-      # gets b7 weight in G minor vs b5 weight in C minor (+0.37). Increasing
-      # bins_per_octave reduces F# but not enough to flip the result without breaking
-      # other tracks. Fix requires a different key scoring model.
       key:
         root: "C"
         mode: "minor"
@@ -449,14 +441,6 @@ tracks:
     expected:
       bpm: 110
       bpm_end: 110
-      # FAILING: algorithm detects G minor. True key is C minor.
-      # C minor and G minor share 6/7 pitch classes; the only distinguishing note
-      # is Ab (in C minor) vs A natural (in G minor). Ab=0.486 > A=0.370 correctly
-      # points to C minor, but G's Krumhansl tonic weight advantage (+1.278) exceeds
-      # the Ab evidence (-0.631). Net margin: 0.18. Same structural failure as Alpaca.
-      # Pattern: detected root is the 5th of the true key, b6 (Ab) > natural 6 (A).
-      # Fix: penalise keys where detected root is a P5 above a candidate root when
-      # b6 > natural 6 in the chroma (fingerprint of "detected root = 5th of true key").
       key:
         root: "C"
         mode: "minor"
