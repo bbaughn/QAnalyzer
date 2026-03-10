@@ -442,3 +442,29 @@ tracks:
       no_drums: false
       bars_percussion: 0
       swing: false
+
+  - title: "Deflection"
+    artist: "Emil Rottmayer"
+    file: "test_tracks/deflection.wav"
+    expected:
+      bpm: 110
+      bpm_end: 110
+      # FAILING: algorithm detects G minor. True key is C minor.
+      # C minor and G minor share 6/7 pitch classes; the only distinguishing note
+      # is Ab (in C minor) vs A natural (in G minor). Ab=0.486 > A=0.370 correctly
+      # points to C minor, but G's Krumhansl tonic weight advantage (+1.278) exceeds
+      # the Ab evidence (-0.631). Net margin: 0.18. Same structural failure as Alpaca.
+      # Pattern: detected root is the 5th of the true key, b6 (Ab) > natural 6 (A).
+      # Fix: penalise keys where detected root is a P5 above a candidate root when
+      # b6 > natural 6 in the chroma (fingerprint of "detected root = 5th of true key").
+      key:
+        root: "C"
+        mode: "minor"
+      key_end:
+        root: "C"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
