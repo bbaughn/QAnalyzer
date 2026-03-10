@@ -416,3 +416,29 @@ tracks:
       no_drums: false
       bars_percussion: 0
       swing: false
+
+  - title: "Alpaca"
+    artist: "Acado"
+    file: "test_tracks/alpaca.wav"
+    expected:
+      bpm: 114
+      bpm_end: 114
+      # FAILING: algorithm detects G minor. True key is C minor (Cm/Fm arpeggio).
+      # G is the 5th of C minor and appears in both chords (Cm: C,Eb,G; Fm7: F,Ab,C,Eb),
+      # dominating the chroma at 0.830. The Krumhansl tonic weight for G minor (+1.31)
+      # overcomes the Ab evidence for C minor (-0.76) by a margin of only 0.31/21.4 (1.4%).
+      # The deciding factor is F# (0.585), likely CQT spectral leakage from G, which
+      # gets b7 weight in G minor vs b5 weight in C minor (+0.37). Increasing
+      # bins_per_octave reduces F# but not enough to flip the result without breaking
+      # other tracks. Fix requires a different key scoring model.
+      key:
+        root: "C"
+        mode: "minor"
+      key_end:
+        root: "C"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
