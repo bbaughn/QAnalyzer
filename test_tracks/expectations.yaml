@@ -124,6 +124,13 @@ tracks:
     expected:
       bpm: 91
       bpm_end: 91
+      # FAILING: algorithm detects C minor. True key is G minor.
+      # Autechre's synthesis generates genuine Ab-ish frequencies in this G minor
+      # track: chroma[Ab]=0.48 >> chroma[A]=0.34 (ratio 1.41), which satisfies
+      # the P5-above b2>nat2 fingerprint. C minor then scores within 2.4% of G
+      # minor on the global chroma, so the correction misfires. The track is
+      # 50 cents sharp but chroma_cqt already auto-corrects for tuning — the
+      # elevated Ab is genuine musical content, not bin leakage.
       key:
         root: "G"
         mode: "minor"

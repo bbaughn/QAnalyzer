@@ -431,7 +431,6 @@ def _apply_segment_dorian_refinement(
 def _segment_key_timeline(
     chroma_sync: np.ndarray,
     beat_times: np.ndarray,
-    global_tuning_cents: int = 0,
 ) -> tuple[list[dict], list[dict]]:
     # Derive a global root hint from the full-track mean chroma.
     #
@@ -457,26 +456,20 @@ def _segment_key_timeline(
 
     _p5_corrected = False  # set to True if the P5-above correction fires below
 
-    # "Detected root is the 5th" correction for minor keys near standard pitch.
+    # "Detected root is the 5th" correction for minor keys.
     #
     # When Krumhansl and argmax agree on a minor root X but the b2 of X carries
-    # more chroma energy than the natural 2 of X, the track may be in a key
-    # where X is the dominant (5th) rather than the tonic.  The b2-of-X
-    # fingerprint works because the b2 of X equals the b6 of the candidate
-    # (X + 5), and the b6 is diatonic in minor while the natural 2 of X is not
-    # — so chroma[b2] > chroma[nat2] at the detected root is strong evidence
-    # the track is in the P4-above key.
-    #
-    # Tuning gate: large tuning offsets cause the tonic to spill energy into the
-    # adjacent semitone bin (the b2), triggering false positives.  Only apply
-    # the correction when tuning is within ±20 cents of standard pitch.
+    # more chroma energy than the natural 2 of X (ratio > 1.25), the track may
+    # be in a key where X is the dominant (5th) rather than the tonic.
+    # The b2-of-X fingerprint works because the b2 of X equals the b6 of the
+    # candidate (X + 5), which is diatonic in natural minor, while the natural
+    # 2 of X is not diatonic in the candidate key.
     #
     # Confirmed on: Alpaca (G→C minor, margin 1.4%) and
     #               Deflection (G→C minor, margin 0.8%).
     if (
         global_root_idx == krumhansl_idx
         and global_key_est.mode in {"minor", "locrian"}
-        and abs(global_tuning_cents) < 20
     ):
         _b2_idx = (global_root_idx + 1) % 12
         _nat2_idx = (global_root_idx + 2) % 12
@@ -1653,9 +1646,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     global_tuning_cents = features["global_tuning_cents"]
     perc_energy_ratio = features["perc_energy_ratio"]
 
-    key_segments_raw, key_segments = _segment_key_timeline(
-        chroma_sync, beat_times, global_tuning_cents=global_tuning_cents
-    )
+    key_segments_raw, key_segments = _segment_key_timeline(chroma_sync, beat_times)
     global_key = _global_key_from_segments(key_segments_raw if key_segments_raw else key_segments)
 
     raw_tempo_segments = _dedup_tempo_windows(_raw_tempo_windows(beat_times))
