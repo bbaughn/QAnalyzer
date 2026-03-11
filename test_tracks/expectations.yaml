@@ -442,6 +442,86 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Burned Oak"
+    artist: "Quince"
+    file: "test_tracks/burned_oak.wav"
+    expected:
+      # FAILING: algorithm detects 87 BPM. True tempo is 90.
+      # FAILING: no_key fires because exactly 4 PCs dominate frame-by-frame argmax
+      # (E=69%, G#=16%, A=9%, F=2%) — same statistical fingerprint as tuned percussion
+      # (Melchom). The track is genuinely tonal (E phrygian dominant throughout per
+      # raw key segments), but n_competitive_pcs=4 hits the <=4 threshold.
+      # True key is E phrygian (user assessment; spreadsheet records Em).
+      # FAILING: no_drums=True because compressed/smeary drums are absorbed by HPSS
+      # into the harmonic component (perc_energy_ratio=0.15, perc_ratio mean=0.195).
+      bpm: 90
+      bpm_end: 90
+      key:
+        root: "E"
+        mode: "phrygian"
+      key_end:
+        root: "E"
+        mode: "phrygian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "Nocturnal"
+    artist: "Barker & Baumecker"
+    file: "test_tracks/nocturnal.wav"
+    expected:
+      bpm: 128
+      bpm_end: 128
+      key:
+        root: "C"
+        mode: "minor"
+      key_end:
+        root: "C"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "To The Edge of the World"
+    artist: "Aera"
+    file: "test_tracks/to_the_edge.wav"
+    expected:
+      bpm: 94
+      bpm_end: 94
+      key:
+        root: "Eb"
+        mode: "minor"
+      key_end:
+        root: "Eb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "Psychotic Particle"
+    artist: "Young Marco"
+    file: "test_tracks/psychotic_particle.wav"
+    expected:
+      bpm: 120
+      bpm_end: 120
+      key:
+        root: "A"
+        mode: "minor"
+      key_end:
+        root: "A"
+        mode: "minor"
+      tuning: 25
+      tuning_end: 25
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Deflection"
     artist: "Emil Rottmayer"
     file: "test_tracks/deflection.wav"

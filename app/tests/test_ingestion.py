@@ -72,3 +72,11 @@ def test_metadata_selection_uses_fallback_artist_when_topic_missing():
     title, artist = ingestion._select_artist_title_from_metadata(data)
     assert title == "Only Song Name"
     assert artist == "Description Artist"
+
+
+def test_normalize_topic_artist_strips_parentheses():
+    assert ingestion._normalize_topic_artist("Some Artist (Official)") == "Some Artist"
+
+
+def test_normalize_topic_artist_strips_parentheses_and_topic_suffix():
+    assert ingestion._normalize_topic_artist("Some Artist (Live) - Topic") == "Some Artist"

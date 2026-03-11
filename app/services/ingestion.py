@@ -101,6 +101,8 @@ def _normalize_topic_artist(artist: str | None) -> str | None:
     if not artist:
         return artist
     cleaned = artist.strip()
+    cleaned = re.sub(r"\([^)]*\)", "", cleaned).strip()
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" -|:")
     return re.sub(r"\s*-\s*topic\s*$", "", cleaned, flags=re.IGNORECASE).strip()
 
 
