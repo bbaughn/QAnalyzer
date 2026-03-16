@@ -107,6 +107,49 @@ def _key_from_chroma(chroma_vec: np.ndarray, constrain_root: int | None = None) 
     return KeyEstimate(key=KEYS[best_key_idx], mode=best_mode, confidence=best_score)
 
 
+def _midi_root_idx_from_hist(midi_pc_hist: np.ndarray) -> int:
+    """Select global root from a MIDI pitch-class histogram.
+
+    Mirrors the argmax/Krumhansl 95% threshold logic in _segment_key_timeline
+    without the P5 correction (used to *validate* the P5 correction, not reapply it).
+    """
+    argmax_idx = int(np.argmax(midi_pc_hist))
+    est = _key_from_chroma(midi_pc_hist)
+    kr_idx = KEYS.index(est.key)
+    if midi_pc_hist[kr_idx] >= midi_pc_hist[argmax_idx] * 0.95:
+        return kr_idx
+    return argmax_idx
+
+
+def _transcribe_midi_pc_hist(y: np.ndarray, sr: int) -> list[float] | None:
+    """Run Basic-Pitch on audio and return a 12-bin MIDI pitch-class histogram.
+
+    Weighted by note duration × velocity.  Returns None if Basic-Pitch or its
+    ONNX model is unavailable, so the rest of the pipeline degrades gracefully.
+    """
+    try:
+        import soundfile as sf
+        import tempfile
+        from pathlib import Path as _Path
+        import basic_pitch as _bp
+        from basic_pitch.inference import predict as _bp_predict
+        _onnx = _Path(_bp.__file__).parent / "saved_models/icassp_2022/nmp.onnx"
+        if not _onnx.exists():
+            return None
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as _f:
+            sf.write(_f.name, y, sr)
+            _tmp = _f.name
+        _, _, _events = _bp_predict(_tmp, str(_onnx))
+        import os as _os
+        _os.unlink(_tmp)
+        hist: list[float] = [0.0] * 12
+        for _on, _off, _pitch, _vel, *_ in _events:
+            hist[int(_pitch) % 12] += (float(_off) - float(_on)) * float(_vel)
+        return hist
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _raw_tempo_windows(beat_times: np.ndarray) -> list[dict]:
     """Per-window BPM estimates before any coalescing."""
     if beat_times.size < 8:
@@ -431,6 +474,7 @@ def _apply_segment_dorian_refinement(
 def _segment_key_timeline(
     chroma_sync: np.ndarray,
     beat_times: np.ndarray,
+    midi_pc_hist: list[float] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     # Derive a global root hint from the full-track mean chroma.
     #
@@ -480,13 +524,41 @@ def _segment_key_timeline(
             _cand_score = float(np.dot(_chroma_n, np.roll(_minor_norm, _cand_root)))
             _curr_score = float(np.dot(_chroma_n, np.roll(_minor_norm, global_root_idx)))
             if _cand_score > _curr_score * 0.97:
+                _pre_p5_root_idx = global_root_idx
                 global_root_idx = _cand_root
                 _p5_corrected = True
+
+    # MIDI-assisted P5 validation: when Basic-Pitch is available and the P5
+    # correction fired, check whether the global MIDI root agrees with the
+    # pre-correction root (suppress), the post-correction root (keep), or a
+    # third candidate (redirect).  MIDI histograms are substantially free of
+    # the harmonic overtone contamination that causes P5 misfires on non-tonal
+    # instruments (sitar sympathetics, resonant strings, etc.).
+    _midi_redirected = False  # True when MIDI steers to a third root (not pre- or post-P5)
+    if _p5_corrected and midi_pc_hist is not None and settings.enable_midi_key_assist:
+        _midi_h = np.array(midi_pc_hist, dtype=float)
+        if _midi_h.sum() > 0:
+            _midi_root = _midi_root_idx_from_hist(_midi_h)
+            if _midi_root == _pre_p5_root_idx:
+                # MIDI agrees with pre-correction root → P5 was a misfire; revert
+                global_root_idx = _pre_p5_root_idx
+                _p5_corrected = False
+            elif _midi_root != global_root_idx:
+                # MIDI points to a third root → redirect to MIDI's answer, but
+                # don't force "minor" mode override (mode detection runs freely
+                # constrained to this root, allowing mixolydian/dorian/etc.)
+                global_root_idx = _midi_root
+                _p5_corrected = False
+                _midi_redirected = True
+            # else: MIDI==post-P5 root → correction was correct, keep it
 
     # When the P5-above correction fires the per-window constrained call must
     # always override the unconstrained estimate, so raise the margin to 1.0
     # (confidence is bounded to [0, 1], so this forces the corrected root).
-    _window_margin = 1.0 if _p5_corrected else 0.015
+    # The same enforcement applies when MIDI redirects to a third root —
+    # per-window chroma may still prefer the contaminated root, so we force
+    # the MIDI-validated root at every window too.
+    _window_margin = 1.0 if (_p5_corrected or _midi_redirected) else 0.015
 
     raw = _segment_key_timeline_raw(
         chroma_sync, beat_times,
@@ -1593,6 +1665,8 @@ def extract_audio_features(path: str) -> dict:
         np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9)
     )
 
+    midi_pc_hist = _transcribe_midi_pc_hist(y, sr) if settings.enable_midi_key_assist else None
+
     return {
         "sr": int(sr),
         "hop_length": hop_length,
@@ -1607,6 +1681,7 @@ def extract_audio_features(path: str) -> dict:
         "rms": rms.tolist(),
         "global_tuning_cents": global_tuning_cents,
         "perc_energy_ratio": perc_energy_ratio,
+        "midi_pc_hist": midi_pc_hist,
     }
 
 
@@ -1646,7 +1721,8 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     global_tuning_cents = features["global_tuning_cents"]
     perc_energy_ratio = features["perc_energy_ratio"]
 
-    key_segments_raw, key_segments = _segment_key_timeline(chroma_sync, beat_times)
+    midi_pc_hist = features.get("midi_pc_hist")
+    key_segments_raw, key_segments = _segment_key_timeline(chroma_sync, beat_times, midi_pc_hist=midi_pc_hist)
     global_key = _global_key_from_segments(key_segments_raw if key_segments_raw else key_segments)
 
     raw_tempo_segments = _dedup_tempo_windows(_raw_tempo_windows(beat_times))
@@ -1815,10 +1891,19 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     # mean winner margin is above the threshold.
     _chroma_sorted = np.sort(chroma_sync, axis=0)[::-1, :]
     _winner_margin = float(np.mean(_chroma_sorted[0, :] - _chroma_sorted[1, :]))
+    # Guard against tonal tracks where two pitch classes compete roughly equally
+    # (e.g. a mixolydian root and its b7 alternating frame-by-frame).  Tuned
+    # percussion has one PC winning the vast majority of frames (argmax-fraction
+    # margin ≥ 0.25+), whereas two-tonal-center competition produces a much
+    # smaller margin (< 0.10).  Only fire no_key when a single PC clearly
+    # dominates cross-frame.
+    _argmax_fracs_sorted = np.sort(_pc_fracs)[::-1]
+    _argmax_frac_margin = float(_argmax_fracs_sorted[0] - _argmax_fracs_sorted[1])
     no_key = (
         (not no_tempo)
         and (_n_competitive_pcs <= settings.no_key_max_competitive_pcs)
         and (_winner_margin >= settings.no_key_min_winner_margin)
+        and (_argmax_frac_margin >= settings.no_key_min_argmax_frac_margin)
     )
     if no_key:
         for s in sections:

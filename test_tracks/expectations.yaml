@@ -124,13 +124,12 @@ tracks:
     expected:
       bpm: 91
       bpm_end: 91
-      # FAILING: algorithm detects C minor. True key is G minor.
+      # P5 correction suppressed by MIDI validation (fixed).
       # Autechre's synthesis generates genuine Ab-ish frequencies in this G minor
       # track: chroma[Ab]=0.48 >> chroma[A]=0.34 (ratio 1.41), which satisfies
-      # the P5-above b2>nat2 fingerprint. C minor then scores within 2.4% of G
-      # minor on the global chroma, so the correction misfires. The track is
-      # 50 cents sharp but chroma_cqt already auto-corrects for tuning — the
-      # elevated Ab is genuine musical content, not bin leakage.
+      # the P5-above b2>nat2 fingerprint and would misfire to C minor. Basic-Pitch
+      # MIDI transcription correctly identifies G as the top pitch class (57% of
+      # weighted duration), matching the pre-P5 root and suppressing the correction.
       key:
         root: "G"
         mode: "minor"
@@ -518,6 +517,84 @@ tracks:
         mode: "minor"
       tuning: 25
       tuning_end: 25
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "Maya Bay"
+    artist: "Guy Contact"
+    file: "test_tracks/maya_bay.wav"
+    expected:
+      bpm: 110
+      bpm_end: 110
+      # FAILING: algorithm detects F dorian. True key is G mixolydian.
+      # F (b7 of G mixolydian) wins frame-by-frame argmax 44% vs G at 39% — the b7
+      # outcompetes the root in raw chroma energy, causing the profile to lock onto F
+      # as the tonic. no_key no longer fires (fixed by argmax_frac_margin guard: the
+      # 44/39 split gives margin=0.051, far below the no_key_min_argmax_frac_margin
+      # of 0.25, correctly indicating two competing tonal centers rather than percussion).
+      no_key: false
+      key:
+        root: "G"
+        mode: "mixolydian"
+      key_end:
+        root: "G"
+        mode: "mixolydian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "Tikken"
+    artist: "Polynation"
+    file: "test_tracks/tikken.wav"
+    expected:
+      bpm: 104
+      bpm_end: 104
+      key:
+        root: "Bb"
+        mode: "minor"
+      key_end:
+        root: "Bb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: algorithm detects 2 bars (percussion enters at bar 3). True entry is
+      # bar 1 (no intro). The quiet melodic element in bars 1–2 is low in the mix but
+      # triggers the harmonic onset detector, causing a false percussion delay.
+      bars_percussion: 0
+      swing: false
+
+  - title: "Spirit in Tala"
+    artist: "Chari Chari"
+    file: "test_tracks/spirit_in_tala_2.wav"
+    expected:
+      # FAILING: algorithm detects 128 BPM. True tempo is 64 BPM (halftime feel).
+      # Snare lands on beat 3 of the 128-grid (halftime pattern), same failure mode
+      # as Ghost of Akina. 128 = 64 × 2.
+      # Note: spirit_in_tala_2.wav is the server's 44.1kHz mono download (25MB);
+      # the original 48kHz stereo download gives 127 due to beat tracker variance.
+      bpm: 64
+      bpm_end: 64
+      # P5 correction redirected to D by MIDI validation (fixed).
+      # Sitar sympathetic strings generate strong B and C chroma energy (B=0.601,
+      # C=0.582), dominating the true tonic D (0.444). B wins the chroma root, the
+      # P5 correction then fires (C/Db ratio 1.441 > 1.25) converting B → E minor.
+      # Basic-Pitch MIDI transcription correctly identifies D as the top pitch class
+      # (45% of weighted duration; A=25%, G=25%), which is a third root — neither
+      # the pre-P5 root (B) nor the post-P5 root (E). The MIDI redirect overrides
+      # global_root_idx to D with a forced window margin, and unconstrained mode
+      # detection then correctly finds D mixolydian (b7=C is strong, no E audible).
+      key:
+        root: "D"
+        mode: "mixolydian"
+      key_end:
+        root: "D"
+        mode: "mixolydian"
+      tuning: 0
+      tuning_end: 0
       no_drums: false
       bars_percussion: 0
       swing: false

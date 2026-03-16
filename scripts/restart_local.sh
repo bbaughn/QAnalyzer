@@ -12,9 +12,13 @@ API_LOG="${ROOT_DIR}/data/tmp/api.log"
 WORKER_LOG="${ROOT_DIR}/data/tmp/worker.log"
 mkdir -p "${ROOT_DIR}/data/tmp"
 
-VENV_UVICORN="${ROOT_DIR}/.venv/bin/uvicorn"
 VENV_PYTHON=""
-for candidate in "${ROOT_DIR}/.venv/bin/python" "${ROOT_DIR}/.venv/bin/python3" "${ROOT_DIR}/.venv/bin/python3.12"; do
+EXTERNAL_VENV="${HOME}/.local/venvs/qanalyzer"
+for candidate in \
+  "${ROOT_DIR}/.venv/bin/python" \
+  "${ROOT_DIR}/.venv/bin/python3" \
+  "${EXTERNAL_VENV}/bin/python" \
+  "${EXTERNAL_VENV}/bin/python3"; do
   if [[ -x "${candidate}" ]] && "${candidate}" -c 'import sys; print(sys.version)' >/dev/null 2>&1; then
     VENV_PYTHON="${candidate}"
     break
@@ -22,8 +26,11 @@ for candidate in "${ROOT_DIR}/.venv/bin/python" "${ROOT_DIR}/.venv/bin/python3" 
 done
 
 if [[ -z "${VENV_PYTHON}" ]]; then
-  echo "[restart] Could not find a Python executable in .venv/bin" >&2
-  exit 1
+  echo "[restart] venv missing or broken — creating at ${EXTERNAL_VENV}..."
+  mkdir -p "$(dirname "${EXTERNAL_VENV}")"
+  python3 -m venv "${EXTERNAL_VENV}"
+  "${EXTERNAL_VENV}/bin/pip" install -r "${ROOT_DIR}/requirements.txt"
+  VENV_PYTHON="${EXTERNAL_VENV}/bin/python"
 fi
 
 echo "[restart] stopping existing API/worker processes..."
@@ -32,7 +39,7 @@ pkill -f "app\.worker" 2>/dev/null || true
 sleep 0.3
 
 echo "[restart] starting API..."
-nohup "${VENV_UVICORN}" app.main:app --host "${API_HOST}" --port "${API_PORT}" >"${API_LOG}" 2>&1 &
+nohup "${VENV_PYTHON}" -m uvicorn app.main:app --host "${API_HOST}" --port "${API_PORT}" >"${API_LOG}" 2>&1 &
 API_PID=$!
 
 echo "[restart] starting worker..."
