@@ -605,12 +605,13 @@ tracks:
     expected:
       bpm: 107
       bpm_end: 107
-      # FAILING: algorithm detects A major. True mode is A mixolydian.
+      # Key now passing via MIDI M3/b7 refinement.
       # A dominates 82% of frames (strong bass drone), suppressing no_key via the
-      # MIDI active-PC guard (4 MIDI PCs > 5% confirms tonal content). Root A is
-      # correctly found. However, the b7 (G=8.6%) and the nat7 (Ab=9.9%) are near-
-      # equal in global chroma, leaving Krumhansl unable to distinguish mixolydian
-      # from major. Same failure mode as other mixolydian tracks.
+      # MIDI active-PC guard (4 MIDI PCs > 5% confirms tonal content). Chroma
+      # Krumhansl was landing on A minor/major because the b7 (G) and nat7 (Ab)
+      # are near-equal in global chroma. MIDI cleanly confirms major family via
+      # M3 (C#/Db=7.5%) >> b3 (C≈0%), then confirms mixolydian via b7 (G=1.8%)
+      # >> nat7 (Ab≈0%), overriding the per-window chroma mode to mixolydian.
       no_key: false
       key:
         root: "A"
@@ -621,6 +622,10 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
+      # FAILING: algorithm detects 24 bars (percussion enters at bar 25). True
+      # entry is bar 1 (no harmonic intro). Likely a false harmonic onset delay
+      # — the track opens with full drums but early transients may be below the
+      # consecutive-beat threshold.
       bars_percussion: 0
       swing: false
 

@@ -565,6 +565,56 @@ def _segment_key_timeline(
         global_root_idx=global_root_idx,
         global_root_margin=_window_margin,
     )
+    # MIDI major/mixolydian refinement: when the chroma pipeline assigns a
+    # major-family mode to the global root, use MIDI to arbitrate the
+    # nat7 (major) vs b7 (mixolydian) distinction.  This single-note check
+    # is the most reliable use of MIDI for mode detection: either the natural
+    # 7th appears in the transcribed notes or it doesn't, and harmonic overtones
+    # of the root don't land on the 7th in a way that creates ambiguity.
+    #
+    # We deliberately restrict to the major↔mixolydian axis because MIDI is
+    # unreliable for minor-family distinctions (minor vs dorian vs phrygian
+    # requires detecting b3/b6/m7 colour notes that may not appear in Basic-Pitch
+    # transcription of busy or harmonically dense material).
+    # Skip when _p5_corrected=True — mode is already pinned.
+    if midi_pc_hist is not None and settings.enable_midi_key_assist and not _p5_corrected:
+        _midi_h = np.array(midi_pc_hist, dtype=float)
+        if _midi_h.sum() > 0:
+            _target_key = KEYS[global_root_idx]
+            _target_segs = [seg for seg in raw if seg["key"] == _target_key]
+            if _target_segs:
+                _dominant_chroma_mode = Counter(
+                    seg["mode"] for seg in _target_segs
+                ).most_common(1)[0][0]
+                # Use MIDI 3rd and 7th together to arbitrate major vs mixolydian.
+                # Chroma can mis-assign a mixolydian track to the minor family
+                # when tonic/4th/5th dominate (all shared between minor and
+                # mixolydian). MIDI M3 vs b3 cleanly separates the families:
+                # major-family tracks have a transcribed M3 and no b3; minor-
+                # family tracks show the reverse.  Once family is confirmed,
+                # the b7 vs nat7 presence resolves major vs mixolydian.
+                _midi_n = _midi_h / _midi_h.sum()
+                _M3_idx = (global_root_idx + 4) % 12
+                _b3_idx = (global_root_idx + 3) % 12
+                _b7_idx = (global_root_idx + 10) % 12
+                _nat7_idx = (global_root_idx + 11) % 12
+                _M3_w = float(_midi_n[_M3_idx])
+                _b3_w = float(_midi_n[_b3_idx])
+                _b7_w = float(_midi_n[_b7_idx])
+                _nat7_w = float(_midi_n[_nat7_idx])
+                _midi_major_family = _M3_w > _b3_w * 2.0 and _M3_w > 0.01
+                if _midi_major_family:
+                    if _b7_w > _nat7_w * 2.0 and _b7_w > 0.005:
+                        # Major 3rd present, b7 present, nat7 absent → mixolydian
+                        for _seg in raw:
+                            if _seg["key"] == _target_key:
+                                _seg["mode"] = "mixolydian"
+                    elif _nat7_w > _b7_w * 2.0 and _nat7_w > 0.01:
+                        # Major 3rd present, nat7 present, b7 absent → major
+                        for _seg in raw:
+                            if _seg["key"] == _target_key:
+                                _seg["mode"] = "major"
+
     # When the P5-above correction fires, the constrained call forces root to
     # the corrected pitch class but the mode may come out as lydian (because
     # the Krumhansl lydian profile gives its highest weight to the *original*
