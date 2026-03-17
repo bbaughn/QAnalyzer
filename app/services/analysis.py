@@ -1905,6 +1905,18 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         and (_winner_margin >= settings.no_key_min_winner_margin)
         and (_argmax_frac_margin >= settings.no_key_min_argmax_frac_margin)
     )
+    # MIDI validation: if Basic-Pitch transcription shows ≥ 3 distinct pitch
+    # classes each contributing > 5% of weighted note duration, the track has
+    # meaningful melodic/harmonic content beyond a single tuned percussion voice
+    # and no_key should not fire.  Tuned percussion (Melchom) yields ≤ 2 active
+    # MIDI PCs; tonal tracks with strong bass drones (Blooms) yield ≥ 3-4.
+    if no_key and midi_pc_hist is not None and settings.enable_midi_key_assist:
+        _midi_h = np.array(midi_pc_hist, dtype=float)
+        if _midi_h.sum() > 0:
+            _midi_n = _midi_h / _midi_h.sum()
+            _midi_active_pcs = int(np.sum(_midi_n > 0.05))
+            if _midi_active_pcs >= 3:
+                no_key = False
     if no_key:
         for s in sections:
             s["key"] = None

@@ -599,6 +599,31 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Blooms"
+    artist: "Sau Poler"
+    file: "test_tracks/blooms.wav"
+    expected:
+      bpm: 107
+      bpm_end: 107
+      # FAILING: algorithm detects A major. True mode is A mixolydian.
+      # A dominates 82% of frames (strong bass drone), suppressing no_key via the
+      # MIDI active-PC guard (4 MIDI PCs > 5% confirms tonal content). Root A is
+      # correctly found. However, the b7 (G=8.6%) and the nat7 (Ab=9.9%) are near-
+      # equal in global chroma, leaving Krumhansl unable to distinguish mixolydian
+      # from major. Same failure mode as other mixolydian tracks.
+      no_key: false
+      key:
+        root: "A"
+        mode: "mixolydian"
+      key_end:
+        root: "A"
+        mode: "mixolydian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Deflection"
     artist: "Emil Rottmayer"
     file: "test_tracks/deflection.wav"
