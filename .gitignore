@@ -4,3 +4,17 @@ __pycache__/
 .venv/
 data/
 .DS_Store
+.claude/
+
+# Audio files — too large for git
+test_tracks/*.wav
+test_tracks/*.mp3
+test_tracks/*.flac
+test_tracks/*.aac
+
+# Stem separation cache — large numpy data
+test_tracks/stem_cache/
+
+# Misc data files
+test_tracks/*.csv
+tracks.csv
