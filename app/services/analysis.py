@@ -552,6 +552,28 @@ def _segment_key_timeline(
                 _midi_redirected = True
             # else: MIDI==post-P5 root → correction was correct, keep it
 
+    # General MIDI root override: when no P5 correction or prior MIDI redirect
+    # has fired, check whether the MIDI root disagrees with the chroma root
+    # and whether MIDI has high enough confidence to trust it over chroma.
+    # This catches cases where chroma picks the subdominant (4th) instead of
+    # the tonic because the 4th has slightly higher raw energy — a common
+    # failure mode in mixolydian tracks where the I and IV chords are equally
+    # prominent (e.g. Ocean Chant: C=11.1% vs G=10.7% in chroma, but G=52.6%
+    # in MIDI).  A 35% threshold on the MIDI root's weight prevents spurious
+    # redirects when MIDI transcription is sparse or noisy.
+    if (
+        not _p5_corrected and not _midi_redirected
+        and midi_pc_hist is not None and settings.enable_midi_key_assist
+    ):
+        _midi_h = np.array(midi_pc_hist, dtype=float)
+        if _midi_h.sum() > 0:
+            _midi_root = _midi_root_idx_from_hist(_midi_h)
+            _midi_n = _midi_h / _midi_h.sum()
+            _midi_root_weight = float(_midi_n[_midi_root])
+            if _midi_root != global_root_idx and _midi_root_weight >= 0.45:
+                global_root_idx = _midi_root
+                _midi_redirected = True
+
     # When the P5-above correction fires the per-window constrained call must
     # always override the unconstrained estimate, so raise the margin to 1.0
     # (confidence is bounded to [0, 1], so this forces the corrected root).

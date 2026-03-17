@@ -629,6 +629,31 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Ocean Chant"
+    artist: "Beesmunt Soundsystem"
+    file: "test_tracks/ocean_chant.wav"
+    expected:
+      bpm: 110
+      bpm_end: 110
+      # Key passing via general MIDI root redirect.
+      # Chroma picks C (11.1%) over G (10.7%) due to a prominent subdominant.
+      # MIDI shows G=52.6%, D=21.4%, F=10.3% — clearly G. The general MIDI root
+      # override fires (G weight 0.526 ≥ 0.45 threshold, G ≠ C chroma root),
+      # redirecting to G with forced window margin. MIDI M3/b7 check then confirms
+      # mixolydian (B=6.9%>>Bb=1.9% for major family; F=10.3%>>F#=0% for b7).
+      no_key: false
+      key:
+        root: "G"
+        mode: "mixolydian"
+      key_end:
+        root: "G"
+        mode: "mixolydian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Deflection"
     artist: "Emil Rottmayer"
     file: "test_tracks/deflection.wav"
