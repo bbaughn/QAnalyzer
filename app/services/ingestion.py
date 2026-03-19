@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -87,14 +88,18 @@ def _youtube_metadata_cache_path(source: str) -> Path:
 def _yt_dlp_cmd_prefix() -> list[str]:
     resolved = shutil.which("yt-dlp")
     if resolved:
-        return [resolved]
+        cmd = [resolved]
+    elif (venv_candidate := Path(sys.executable).with_name("yt-dlp")).exists():
+        cmd = [str(venv_candidate)]
+    else:
+        # Fall back to module invocation in the active Python environment.
+        cmd = [sys.executable, "-m", "yt_dlp"]
 
-    venv_candidate = Path(sys.executable).with_name("yt-dlp")
-    if venv_candidate.exists():
-        return [str(venv_candidate)]
+    cookies_file = os.environ.get("YTDLP_COOKIES_FILE")
+    if cookies_file and Path(cookies_file).exists():
+        cmd += ["--cookies", cookies_file]
 
-    # Fall back to module invocation in the active Python environment.
-    return [sys.executable, "-m", "yt_dlp"]
+    return cmd
 
 
 def _normalize_topic_artist(artist: str | None) -> str | None:
