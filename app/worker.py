@@ -80,6 +80,7 @@ def process_one_job() -> bool:
         job = repo.claim_next_queued_job()
         if not job:
             return False
+        print(f"[worker] Claimed job {job.id} ({job.source_type}: {job.source[:60]})", flush=True)
 
         progress: dict[str, Any] = {
             "job_id": job.id,
@@ -119,12 +120,15 @@ def process_one_job() -> bool:
             }
             repo.mark_succeeded(job.id, result, sha)
         except SourceError as e:
+            print(f"[worker] Job {job.id} source error: {e}", flush=True)
             progress = _update_progress(job.id, progress, status="failed", finalize_current_stage=True)
             repo.mark_failed(job.id, "source_error", str(e))
         except MediaDecodeError as e:
+            print(f"[worker] Job {job.id} media decode error: {e}", flush=True)
             progress = _update_progress(job.id, progress, status="failed", finalize_current_stage=True)
             repo.mark_failed(job.id, "media_decode_error", str(e))
         except Exception as e:  # noqa: BLE001
+            print(f"[worker] Job {job.id} unexpected error: {e}", flush=True)
             progress = _update_progress(job.id, progress, status="failed", finalize_current_stage=True)
             repo.mark_failed(job.id, "analysis_error", str(e))
         finally:
@@ -145,10 +149,12 @@ def main() -> None:
         process_one_job()
         return
 
+    print("[worker] Entering main loop", flush=True)
     while True:
         had_job = process_one_job()
-        if not had_job:
-            time.sleep(settings.worker_loop_sleep_seconds)
+        if had_job:
+            print("[worker] Finished processing a job", flush=True)
+        time.sleep(settings.worker_loop_sleep_seconds)
 
 
 if __name__ == "__main__":
