@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -90,3 +91,16 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> AnalyzeResultRespo
     if job.status.value != "succeeded":
         raise HTTPException(status_code=409, detail=f"Job status is {job.status.value}")
     return AnalyzeResultResponse(job_id=job.id, status="succeeded", result=job.result_json or {})
+
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+
+
+@app.post("/admin/upload-cookies")
+async def upload_cookies(file: UploadFile, token: str = "") -> dict:
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    cookies_path = settings.storage_root.parent / "cookies.txt"
+    content = await file.read()
+    cookies_path.write_bytes(content)
+    return {"ok": True, "path": str(cookies_path), "size": len(content)}
