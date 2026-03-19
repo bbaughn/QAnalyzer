@@ -96,8 +96,14 @@ def _yt_dlp_cmd_prefix() -> list[str]:
         cmd = [sys.executable, "-m", "yt_dlp"]
 
     cookies_file = os.environ.get("YTDLP_COOKIES_FILE")
-    if cookies_file and Path(cookies_file).exists():
-        cmd += ["--cookies", cookies_file]
+    if cookies_file:
+        if Path(cookies_file).exists():
+            cmd += ["--cookies", cookies_file]
+            print(f"[yt-dlp] Using cookies from {cookies_file}", flush=True)
+        else:
+            print(f"[yt-dlp] WARNING: YTDLP_COOKIES_FILE set to {cookies_file} but file does not exist", flush=True)
+    else:
+        print("[yt-dlp] WARNING: YTDLP_COOKIES_FILE not set, downloads may fail", flush=True)
 
     return cmd
 
