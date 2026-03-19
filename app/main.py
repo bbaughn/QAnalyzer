@@ -96,6 +96,32 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> AnalyzeResultRespo
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 
 
+@app.get("/admin/debug")
+def admin_debug(token: str = "") -> dict:
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    import shutil
+    import subprocess
+    info: dict = {}
+    for cmd_name in ("node", "nodejs", "deno", "bun"):
+        path = shutil.which(cmd_name)
+        info[cmd_name] = {"path": path}
+        if path:
+            try:
+                ver = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5)
+                info[cmd_name]["version"] = ver.stdout.strip()
+            except Exception as e:
+                info[cmd_name]["error"] = str(e)
+    try:
+        ytdlp = subprocess.run(["yt-dlp", "--version"], capture_output=True, text=True, timeout=5)
+        info["yt-dlp"] = {"version": ytdlp.stdout.strip()}
+    except Exception as e:
+        info["yt-dlp"] = {"error": str(e)}
+    cookies_file = os.environ.get("YTDLP_COOKIES_FILE", "")
+    info["cookies"] = {"env": cookies_file, "exists": Path(cookies_file).exists() if cookies_file else False}
+    return info
+
+
 @app.post("/admin/upload-cookies")
 async def upload_cookies(file: UploadFile, token: str = "") -> dict:
     if not ADMIN_TOKEN or token != ADMIN_TOKEN:
