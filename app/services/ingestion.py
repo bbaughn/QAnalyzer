@@ -278,13 +278,21 @@ def ingest_source(
         last_error = ""
         for cmd in attempts:
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True)
+                print(f"[yt-dlp] Running download attempt: {' '.join(cmd[:5])}...", flush=True)
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            except subprocess.TimeoutExpired:
+                last_error = "yt-dlp download timed out after 5 minutes"
+                print(f"[yt-dlp] {last_error}", flush=True)
+                continue
             except FileNotFoundError:
                 last_error = (
                     "yt-dlp executable was not found. "
                     "Install yt-dlp or ensure it is available to the worker process."
                 )
                 continue
+            print(f"[yt-dlp] Exit code: {proc.returncode}", flush=True)
+            if proc.stderr:
+                print(f"[yt-dlp] stderr: {proc.stderr[:500]}", flush=True)
             if proc.returncode == 0:
                 last_error = ""
                 break
