@@ -144,6 +144,24 @@ def list_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
     }
 
 
+@app.post("/admin/cancel-job/{job_id}")
+def cancel_job(job_id: str, token: str = "", db: Session = Depends(get_db)) -> dict:
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    from app.models import Job, JobStatus
+    from datetime import datetime
+    job = db.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    old_status = job.status.value
+    job.status = JobStatus.failed
+    job.error_code = "cancelled"
+    job.error_message = "Manually cancelled via admin"
+    job.finished_at = datetime.utcnow()
+    db.commit()
+    return {"id": job_id, "old_status": old_status, "new_status": "failed"}
+
+
 @app.post("/admin/cleanup")
 def admin_cleanup(token: str = "", db: Session = Depends(get_db)) -> dict:
     if not ADMIN_TOKEN or token != ADMIN_TOKEN:
