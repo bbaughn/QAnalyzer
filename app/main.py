@@ -122,6 +122,23 @@ def admin_debug(token: str = "") -> dict:
     return info
 
 
+@app.post("/admin/reset-stuck-jobs")
+def reset_stuck_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    from app.models import Job, JobStatus
+    stuck = db.query(Job).filter(Job.status == JobStatus.running).all()
+    count = 0
+    for job in stuck:
+        job.status = JobStatus.queued
+        job.started_at = None
+        job.error_code = None
+        job.error_message = None
+        count += 1
+    db.commit()
+    return {"reset": count}
+
+
 @app.post("/admin/upload-cookies")
 async def upload_cookies(file: UploadFile, token: str = "") -> dict:
     if not ADMIN_TOKEN or token != ADMIN_TOKEN:
