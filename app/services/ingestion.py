@@ -95,6 +95,8 @@ def _yt_dlp_cmd_prefix() -> list[str]:
         # Fall back to module invocation in the active Python environment.
         cmd = [sys.executable, "-m", "yt_dlp"]
 
+    cmd += ["--js-runtimes", "node"]
+
     cookies_file = os.environ.get("YTDLP_COOKIES_FILE")
     if cookies_file:
         if Path(cookies_file).exists():
