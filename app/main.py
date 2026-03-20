@@ -144,6 +144,43 @@ def list_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
     }
 
 
+@app.post("/admin/cleanup")
+def admin_cleanup(token: str = "", db: Session = Depends(get_db)) -> dict:
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    import shutil
+    from app.models import Job, JobStatus
+    cleaned = {"job_dirs": 0, "youtube_cache_files": 0, "failed_jobs_deleted": 0}
+
+    # Delete job working directories (audio files, temp downloads)
+    storage = settings.storage_root
+    if storage.exists():
+        for item in storage.iterdir():
+            if item.is_dir() and item.name != "_youtube_cache":
+                shutil.rmtree(item, ignore_errors=True)
+                cleaned["job_dirs"] += 1
+
+    # Clear YouTube cache
+    yt_cache = storage / "_youtube_cache"
+    if yt_cache.exists():
+        for item in yt_cache.iterdir():
+            item.unlink(missing_ok=True)
+            cleaned["youtube_cache_files"] += 1
+
+    # Delete old failed job DB rows (keep last 5)
+    failed = db.query(Job).filter(Job.status == JobStatus.failed).order_by(Job.created_at.desc()).all()
+    for job in failed[5:]:
+        db.delete(job)
+        cleaned["failed_jobs_deleted"] += 1
+    db.commit()
+
+    # Report disk usage
+    import subprocess
+    du = subprocess.run(["du", "-sh", str(settings.storage_root.parent)], capture_output=True, text=True)
+    cleaned["disk_usage"] = du.stdout.strip()
+    return cleaned
+
+
 @app.post("/admin/reset-stuck-jobs")
 def reset_stuck_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
     if not ADMIN_TOKEN or token != ADMIN_TOKEN:
