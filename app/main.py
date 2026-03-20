@@ -122,6 +122,28 @@ def admin_debug(token: str = "") -> dict:
     return info
 
 
+@app.get("/admin/jobs")
+def list_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    from app.models import Job
+    jobs = db.query(Job).order_by(Job.created_at.desc()).limit(20).all()
+    return {
+        "jobs": [
+            {
+                "id": j.id,
+                "status": j.status.value,
+                "source": j.source[:80],
+                "created_at": str(j.created_at),
+                "started_at": str(j.started_at) if j.started_at else None,
+                "finished_at": str(j.finished_at) if j.finished_at else None,
+                "error_code": j.error_code,
+            }
+            for j in jobs
+        ]
+    }
+
+
 @app.post("/admin/reset-stuck-jobs")
 def reset_stuck_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
     if not ADMIN_TOKEN or token != ADMIN_TOKEN:
