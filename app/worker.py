@@ -150,8 +150,25 @@ def main() -> None:
         return
 
     print("[worker] Entering main loop", flush=True)
+    loop_count = 0
     while True:
-        had_job = process_one_job()
+        loop_count += 1
+        if loop_count % 30 == 1:  # Log every ~60 seconds
+            try:
+                db = SessionLocal()
+                from sqlalchemy import func
+                from app.models import Job, JobStatus
+                queued = db.query(func.count(Job.id)).filter(Job.status == JobStatus.queued).scalar()
+                running = db.query(func.count(Job.id)).filter(Job.status == JobStatus.running).scalar()
+                db.close()
+                print(f"[worker] Heartbeat: loop={loop_count}, queued={queued}, running={running}", flush=True)
+            except Exception as e:
+                print(f"[worker] Heartbeat error: {e}", flush=True)
+        try:
+            had_job = process_one_job()
+        except Exception as e:
+            print(f"[worker] Unexpected error in process_one_job: {e}", flush=True)
+            had_job = False
         if had_job:
             print("[worker] Finished processing a job", flush=True)
         time.sleep(settings.worker_loop_sleep_seconds)
