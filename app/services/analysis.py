@@ -1688,11 +1688,19 @@ def extract_audio_features(path: str) -> dict:
     Returns a JSON-serializable dict of arrays that can be cached and passed
     to interpret_features() without re-loading the audio file.
     """
+    import resource
+    def _mem_mb() -> float:
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024  # Linux: KB -> MB
+
+    print(f"[analysis] Loading audio at {settings.analysis_sr}Hz: {path}", flush=True)
     y, sr = librosa.load(path, sr=settings.analysis_sr, mono=True)
     duration = float(librosa.get_duration(y=y, sr=sr))
+    print(f"[analysis] Loaded: {duration:.1f}s, {y.shape[0]} samples, mem={_mem_mb():.0f}MB", flush=True)
 
     hop_length = 512
+    print("[analysis] Computing onset strength...", flush=True)
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+    print("[analysis] Computing beat track...", flush=True)
     tempo, beat_frames = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop_length)
 
@@ -1703,10 +1711,6 @@ def extract_audio_features(path: str) -> dict:
     if beat_times.size >= 8:
         _extraction_corr = _detect_tempo_correction_ratio(onset_env, beat_times, sr, hop_length)
         if _extraction_corr != 1.0:
-            # Use the BPM implied by beat_times (not tempo_raw) so that both
-            # upward (×1.5) and downward (×0.75) corrections target the right BPM.
-            # tightness=300 (vs the default 100) forces the tracker to commit to the
-            # corrected tempo prior rather than drifting back to the wrong grid.
             _detected_bpm = 60.0 / float(np.median(np.diff(beat_times)))
             _corrected_start_bpm = _detected_bpm * _extraction_corr
             _, beat_frames = librosa.beat.beat_track(
@@ -1715,12 +1719,14 @@ def extract_audio_features(path: str) -> dict:
             )
             beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop_length)
 
+    print("[analysis] Computing onset detect...", flush=True)
     onset_times = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, hop_length=hop_length, units="time")
 
+    print(f"[analysis] Computing chroma CQT... mem={_mem_mb():.0f}MB", flush=True)
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length)
     chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean) if beat_frames.size > 1 else chroma
 
-    # Compute features that need the original signal before HPSS
+    print(f"[analysis] Computing RMS + beat attack + tuning... mem={_mem_mb():.0f}MB", flush=True)
     rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
     beat_attack_sustain = _beat_attack_sustain_ratios(y, sr, beat_times)
     try:
@@ -1729,9 +1735,10 @@ def extract_audio_features(path: str) -> dict:
         global_tuning_cents = 0
     midi_pc_hist = _transcribe_midi_pc_hist(y, sr) if settings.enable_midi_key_assist else None
 
-    # HPSS doubles memory — free original signal immediately after
+    print(f"[analysis] Computing HPSS... mem={_mem_mb():.0f}MB", flush=True)
     y_harm, y_perc = librosa.effects.hpss(y)
     del y
+    print(f"[analysis] HPSS done, y deleted. mem={_mem_mb():.0f}MB", flush=True)
 
     rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop_length)[0]
     rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
@@ -1741,6 +1748,7 @@ def extract_audio_features(path: str) -> dict:
         np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9)
     )
     del y_harm, y_perc
+    print(f"[analysis] Feature extraction complete. mem={_mem_mb():.0f}MB", flush=True)
 
     return {
         "sr": int(sr),
