@@ -1722,11 +1722,17 @@ def extract_audio_features(path: str) -> dict:
     print("[analysis] Computing onset detect...", flush=True)
     onset_times = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, hop_length=hop_length, units="time")
 
-    print(f"[analysis] Computing chroma CQT... mem={_mem_mb():.0f}MB", flush=True)
-    chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length)
-    chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean) if beat_frames.size > 1 else chroma
+    import gc
 
-    print(f"[analysis] Computing RMS + beat attack + tuning... mem={_mem_mb():.0f}MB", flush=True)
+    # Use chroma_stft instead of chroma_cqt — CQT allocates huge intermediate
+    # matrices that push peak memory too high for constrained environments.
+    print(f"[analysis] Computing chroma STFT... mem={_mem_mb():.0f}MB", flush=True)
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr, hop_length=hop_length)
+    gc.collect()
+    chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean) if beat_frames.size > 1 else chroma
+    print(f"[analysis] Chroma done. mem={_mem_mb():.0f}MB", flush=True)
+
+    print(f"[analysis] Computing RMS + beat attack + tuning...", flush=True)
     rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
     beat_attack_sustain = _beat_attack_sustain_ratios(y, sr, beat_times)
     try:
@@ -1734,16 +1740,18 @@ def extract_audio_features(path: str) -> dict:
     except Exception:  # noqa: BLE001
         global_tuning_cents = 0
     midi_pc_hist = _transcribe_midi_pc_hist(y, sr) if settings.enable_midi_key_assist else None
+    gc.collect()
+    print(f"[analysis] Pre-HPSS features done. mem={_mem_mb():.0f}MB", flush=True)
 
-    import gc
-
-    print(f"[analysis] Computing STFT for HPSS... mem={_mem_mb():.0f}MB", flush=True)
-    S = librosa.stft(y, n_fft=2048, hop_length=hop_length)
+    # HPSS with coarse hop (4x) to reduce STFT matrix size.
+    # We only need rough harmonic/percussive energy ratios.
+    hpss_hop = hop_length * 4
+    print(f"[analysis] Computing STFT for HPSS (hop={hpss_hop})... mem={_mem_mb():.0f}MB", flush=True)
+    S = librosa.stft(y, n_fft=2048, hop_length=hpss_hop)
     del y
     gc.collect()
     print(f"[analysis] STFT done, y freed. mem={_mem_mb():.0f}MB", flush=True)
 
-    # HPSS in spectrogram domain — avoids materializing two full waveforms
     S_harm, S_perc = librosa.decompose.hpss(S)
     del S
     gc.collect()
@@ -1751,7 +1759,14 @@ def extract_audio_features(path: str) -> dict:
 
     rms_harm = np.sqrt(np.mean(np.abs(S_harm) ** 2, axis=0))
     rms_perc = np.sqrt(np.mean(np.abs(S_perc) ** 2, axis=0))
-    percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
+    percussive_ratio_per_frame_coarse = rms_perc / (rms_harm + rms_perc + 1e-9)
+    # Interpolate back to original hop resolution
+    n_frames_original = 1 + len(onset_env)  # approximate original frame count
+    percussive_ratio_per_frame = np.interp(
+        np.linspace(0, 1, n_frames_original),
+        np.linspace(0, 1, len(percussive_ratio_per_frame_coarse)),
+        percussive_ratio_per_frame_coarse,
+    )
 
     harm_energy = float(np.sum(np.abs(S_harm) ** 2))
     perc_energy = float(np.sum(np.abs(S_perc) ** 2))
