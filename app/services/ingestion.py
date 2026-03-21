@@ -224,27 +224,7 @@ def ingest_source(
         if stage_hook:
             stage_hook("download")
         yt_dlp_prefix = _yt_dlp_cmd_prefix()
-        cache_path = _youtube_cache_path(source)
         meta_cache_path = _youtube_metadata_cache_path(source)
-        if cache_path.exists():
-            shutil.copy2(cache_path, normalized_path)
-            metadata = {"title": None, "artist": None, "source_url": source}
-            if meta_cache_path.exists():
-                try:
-                    metadata = json.loads(meta_cache_path.read_text(encoding="utf-8"))
-                except (json.JSONDecodeError, OSError):
-                    metadata = {"title": None, "artist": None, "source_url": source}
-            if not metadata.get("title") and not metadata.get("artist"):
-                refreshed = _extract_youtube_metadata(source)
-                if refreshed.get("title") or refreshed.get("artist"):
-                    metadata = refreshed
-                    try:
-                        meta_cache_path.write_text(json.dumps(metadata), encoding="utf-8")
-                    except OSError:
-                        pass
-            if stage_hook:
-                stage_hook("normalize")
-            return normalized_path, _sha256_file(normalized_path), metadata
 
         downloaded = job_dir / "source.%(ext)s"
         attempts = [
@@ -311,7 +291,9 @@ def ingest_source(
         if stage_hook:
             stage_hook("normalize")
         _normalize_to_wav(src_media, normalized_path)
-        shutil.copy2(normalized_path, cache_path)
+        # Delete source download to free disk before analysis
+        for f in job_dir.glob("source.*"):
+            f.unlink(missing_ok=True)
         metadata = _extract_youtube_metadata(source)
         try:
             meta_cache_path.write_text(json.dumps(metadata), encoding="utf-8")
