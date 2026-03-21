@@ -1720,24 +1720,27 @@ def extract_audio_features(path: str) -> dict:
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length)
     chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean) if beat_frames.size > 1 else chroma
 
-    y_harm, y_perc = librosa.effects.hpss(y)
+    # Compute features that need the original signal before HPSS
     rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
-    rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop_length)[0]
-    rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
-    percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
-
     beat_attack_sustain = _beat_attack_sustain_ratios(y, sr, beat_times)
-
     try:
         global_tuning_cents = _tuning_cents_from_offset(float(librosa.estimate_tuning(y=y, sr=sr, n_fft=4096)))
     except Exception:  # noqa: BLE001
         global_tuning_cents = 0
+    midi_pc_hist = _transcribe_midi_pc_hist(y, sr) if settings.enable_midi_key_assist else None
+
+    # HPSS doubles memory — free original signal immediately after
+    y_harm, y_perc = librosa.effects.hpss(y)
+    del y
+
+    rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop_length)[0]
+    rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
+    percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
 
     perc_energy_ratio = float(
         np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9)
     )
-
-    midi_pc_hist = _transcribe_midi_pc_hist(y, sr) if settings.enable_midi_key_assist else None
+    del y_harm, y_perc
 
     return {
         "sr": int(sr),
