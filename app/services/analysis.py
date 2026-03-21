@@ -1735,19 +1735,29 @@ def extract_audio_features(path: str) -> dict:
         global_tuning_cents = 0
     midi_pc_hist = _transcribe_midi_pc_hist(y, sr) if settings.enable_midi_key_assist else None
 
-    print(f"[analysis] Computing HPSS... mem={_mem_mb():.0f}MB", flush=True)
-    y_harm, y_perc = librosa.effects.hpss(y)
-    del y
-    print(f"[analysis] HPSS done, y deleted. mem={_mem_mb():.0f}MB", flush=True)
+    import gc
 
-    rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop_length)[0]
-    rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
+    print(f"[analysis] Computing STFT for HPSS... mem={_mem_mb():.0f}MB", flush=True)
+    S = librosa.stft(y, n_fft=2048, hop_length=hop_length)
+    del y
+    gc.collect()
+    print(f"[analysis] STFT done, y freed. mem={_mem_mb():.0f}MB", flush=True)
+
+    # HPSS in spectrogram domain — avoids materializing two full waveforms
+    S_harm, S_perc = librosa.decompose.hpss(S)
+    del S
+    gc.collect()
+    print(f"[analysis] HPSS done. mem={_mem_mb():.0f}MB", flush=True)
+
+    rms_harm = np.sqrt(np.mean(np.abs(S_harm) ** 2, axis=0))
+    rms_perc = np.sqrt(np.mean(np.abs(S_perc) ** 2, axis=0))
     percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
 
-    perc_energy_ratio = float(
-        np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9)
-    )
-    del y_harm, y_perc
+    harm_energy = float(np.sum(np.abs(S_harm) ** 2))
+    perc_energy = float(np.sum(np.abs(S_perc) ** 2))
+    perc_energy_ratio = perc_energy / (harm_energy + perc_energy + 1e-9)
+    del S_harm, S_perc
+    gc.collect()
     print(f"[analysis] Feature extraction complete. mem={_mem_mb():.0f}MB", flush=True)
 
     return {
