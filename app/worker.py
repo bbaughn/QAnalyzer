@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import multiprocessing
+import signal
+import sys
 from datetime import datetime, timezone
 import time
 from typing import Any
@@ -73,72 +76,116 @@ def _update_progress(
     return payload
 
 
-def process_one_job() -> bool:
+def _run_job_in_process(job_id: str, source_type: str, source: str, analysis_profile: str) -> None:
+    """Run a single job. Called in a child process so OOM kills only this process."""
+    # Re-init DB connection in child process
     db = SessionLocal()
     try:
         repo = JobRepository(db)
-        job = repo.claim_next_queued_job()
-        if not job:
-            return False
-        print(f"[worker] Claimed job {job.id} ({job.source_type}: {job.source[:60]})", flush=True)
 
         progress: dict[str, Any] = {
-            "job_id": job.id,
+            "job_id": job_id,
             "status": "running",
             "started_at": _iso_utc_now(),
             "current_stage": None,
             "stages": {},
         }
-        write_progress(job.id, progress)
+        write_progress(job_id, progress)
 
         def stage_hook(stage: str) -> None:
             nonlocal progress
-            progress = _update_progress(job.id, progress, current_stage=stage)
+            progress = _update_progress(job_id, progress, current_stage=stage)
 
         try:
             audio_path, sha, source_meta = ingest_source(
-                job.id,
-                job.source_type,
-                job.source,
+                job_id,
+                source_type,
+                source,
                 stage_hook=stage_hook,
             )
-            progress = _update_progress(job.id, progress, current_stage="analyze")
-            result = analyze_audio_file(str(audio_path), profile=job.analysis_profile)
-            progress = _update_progress(job.id, progress, status="succeeded", finalize_current_stage=True)
+            progress = _update_progress(job_id, progress, current_stage="analyze")
+            result = analyze_audio_file(str(audio_path), profile=analysis_profile)
+            progress = _update_progress(job_id, progress, status="succeeded", finalize_current_stage=True)
             stage_timings = progress.get("stages", {})
-            total_run_sec = None
-            if isinstance(job.started_at, datetime):
-                total_run_sec = round(max(0.0, (datetime.utcnow() - job.started_at).total_seconds()), 3)
             result["timing"] = {
                 "stages": stage_timings,
-                "total_run_sec": total_run_sec,
             }
             result["track"] = {
                 "title": source_meta.get("title"),
                 "artist": source_meta.get("artist"),
                 "source_url": source_meta.get("source_url"),
             }
-            repo.mark_succeeded(job.id, result, sha)
+            repo.mark_succeeded(job_id, result, sha)
         except SourceError as e:
-            print(f"[worker] Job {job.id} source error: {e}", flush=True)
-            progress = _update_progress(job.id, progress, status="failed", finalize_current_stage=True)
-            repo.mark_failed(job.id, "source_error", str(e))
+            print(f"[worker] Job {job_id} source error: {e}", flush=True)
+            progress = _update_progress(job_id, progress, status="failed", finalize_current_stage=True)
+            repo.mark_failed(job_id, "source_error", str(e))
         except MediaDecodeError as e:
-            print(f"[worker] Job {job.id} media decode error: {e}", flush=True)
-            progress = _update_progress(job.id, progress, status="failed", finalize_current_stage=True)
-            repo.mark_failed(job.id, "media_decode_error", str(e))
+            print(f"[worker] Job {job_id} media decode error: {e}", flush=True)
+            progress = _update_progress(job_id, progress, status="failed", finalize_current_stage=True)
+            repo.mark_failed(job_id, "media_decode_error", str(e))
         except Exception as e:  # noqa: BLE001
-            print(f"[worker] Job {job.id} unexpected error: {e}", flush=True)
-            progress = _update_progress(job.id, progress, status="failed", finalize_current_stage=True)
-            repo.mark_failed(job.id, "analysis_error", str(e))
+            print(f"[worker] Job {job_id} unexpected error: {e}", flush=True)
+            progress = _update_progress(job_id, progress, status="failed", finalize_current_stage=True)
+            repo.mark_failed(job_id, "analysis_error", str(e))
         finally:
-            cleanup_job_storage(job.id)
-        return True
+            cleanup_job_storage(job_id)
     finally:
         db.close()
 
 
+def process_one_job() -> bool:
+    """Claim next queued job and run it in a child process.
+
+    If the child is OOM-killed (exit code -9), the parent marks the job failed
+    so the queue continues.
+    """
+    db = SessionLocal()
+    try:
+        repo = JobRepository(db)
+        job = repo.claim_next_queued_job()
+        if not job:
+            return False
+        job_id = job.id
+        source_type = job.source_type
+        source = job.source
+        analysis_profile = job.analysis_profile
+        print(f"[worker] Claimed job {job_id} ({source_type}: {source[:60]})", flush=True)
+    finally:
+        db.close()
+
+    # Run in child process so OOM only kills the child
+    proc = multiprocessing.Process(
+        target=_run_job_in_process,
+        args=(job_id, source_type, source, analysis_profile),
+    )
+    proc.start()
+    proc.join()
+
+    if proc.exitcode != 0:
+        exit_reason = f"Child process exited with code {proc.exitcode}"
+        if proc.exitcode == -signal.SIGKILL:
+            exit_reason = "Process killed (likely OOM — out of memory)"
+        print(f"[worker] Job {job_id} failed: {exit_reason}", flush=True)
+
+        # Mark job as failed in parent process
+        db = SessionLocal()
+        try:
+            repo = JobRepository(db)
+            repo.mark_failed(job_id, "worker_crash", exit_reason)
+        finally:
+            db.close()
+
+        cleanup_job_storage(job_id)
+    else:
+        print(f"[worker] Job {job_id} completed successfully", flush=True)
+
+    return True
+
+
 def main() -> None:
+    multiprocessing.set_start_method("fork", force=True)
+
     parser = argparse.ArgumentParser(description="EDM analysis worker")
     parser.add_argument("--once", action="store_true", help="Process one job and exit")
     args = parser.parse_args()

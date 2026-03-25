@@ -153,7 +153,7 @@ async function refresh() {
       const vid = extractVideoId(j.source);
       tr.innerHTML = `
         <td><span class="status ${j.status}">${j.status}</span></td>
-        <td class="source" title="${j.source}">${vid}</td>
+        <td class="source" title="${j.source}"><a href="${j.source}" target="_blank" style="color:#60a5fa;text-decoration:none">${vid}</a></td>
         <td class="time">${fmtTime(j.created_at)}</td>
         <td class="time">${duration(j.started_at, j.finished_at)}</td>
         <td class="error" title="${j.error_message || ''}">${j.error_code || ''}</td>
