@@ -26,7 +26,7 @@ class JobStatusResponse(BaseModel):
 
 class AnalyzeSubmissionResponse(BaseModel):
     job_id: str
-    status: Literal["queued"]
+    status: Literal["queued", "succeeded"]
 
 
 class AnalyzeResultResponse(BaseModel):
