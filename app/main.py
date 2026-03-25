@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -15,6 +15,7 @@ from app.services.progress import read_progress
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 UI_FILE = Path(__file__).resolve().parent / "static" / "index.html"
+ADMIN_FILE = Path(__file__).resolve().parent / "static" / "admin.html"
 
 
 def get_db():
@@ -43,10 +44,14 @@ def index() -> FileResponse:
 @app.post("/v1/analyze", response_model=AnalyzeSubmissionResponse)
 def submit_analysis(payload: AnalyzeRequest, db: Session = Depends(get_db)) -> AnalyzeSubmissionResponse:
     from app.models import Job, JobStatus
-    # Return existing succeeded job if one exists for this source
+    # Return existing succeeded job if one exists for this source with same analyzer version
     existing = (
         db.query(Job)
-        .filter(Job.source == payload.source, Job.status == JobStatus.succeeded)
+        .filter(
+            Job.source == payload.source,
+            Job.status == JobStatus.succeeded,
+            Job.analyzer_version == settings.app_version,
+        )
         .order_by(Job.finished_at.desc())
         .first()
     )
@@ -103,17 +108,28 @@ def get_result(job_id: str, db: Session = Depends(get_db)) -> AnalyzeResultRespo
     return AnalyzeResultResponse(job_id=job.id, status="succeeded", result=job.result_json or {})
 
 
+# --------------- Admin API ---------------
+
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+
+
+def _require_admin(token: str) -> None:
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_dashboard() -> FileResponse:
+    return FileResponse(ADMIN_FILE)
 
 
 @app.get("/admin/debug")
 def admin_debug(token: str = "") -> dict:
-    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid admin token")
+    _require_admin(token)
     import shutil
     import subprocess
-    info: dict = {}
-    for cmd_name in ("node", "nodejs", "deno", "bun"):
+    info: dict = {"app_version": settings.app_version}
+    for cmd_name in ("node", "nodejs"):
         path = shutil.which(cmd_name)
         info[cmd_name] = {"path": path}
         if path:
@@ -129,25 +145,28 @@ def admin_debug(token: str = "") -> dict:
         info["yt-dlp"] = {"error": str(e)}
     cookies_file = os.environ.get("YTDLP_COOKIES_FILE", "")
     info["cookies"] = {"env": cookies_file, "exists": Path(cookies_file).exists() if cookies_file else False}
+    du = subprocess.run(["du", "-sh", str(settings.storage_root.parent)], capture_output=True, text=True)
+    info["disk_usage"] = du.stdout.strip()
     return info
 
 
 @app.get("/admin/jobs")
 def list_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
-    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid admin token")
+    _require_admin(token)
     from app.models import Job
-    jobs = db.query(Job).order_by(Job.created_at.desc()).limit(20).all()
+    jobs = db.query(Job).order_by(Job.created_at.desc()).limit(50).all()
     return {
         "jobs": [
             {
                 "id": j.id,
                 "status": j.status.value,
-                "source": j.source[:80],
+                "source": j.source,
                 "created_at": str(j.created_at),
                 "started_at": str(j.started_at) if j.started_at else None,
                 "finished_at": str(j.finished_at) if j.finished_at else None,
                 "error_code": j.error_code,
+                "error_message": j.error_message[:200] if j.error_message else None,
+                "analyzer_version": j.analyzer_version,
             }
             for j in jobs
         ]
@@ -156,8 +175,7 @@ def list_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
 
 @app.post("/admin/cancel-job/{job_id}")
 def cancel_job(job_id: str, token: str = "", db: Session = Depends(get_db)) -> dict:
-    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid admin token")
+    _require_admin(token)
     from app.models import Job, JobStatus
     from datetime import datetime
     job = db.get(Job, job_id)
@@ -172,15 +190,43 @@ def cancel_job(job_id: str, token: str = "", db: Session = Depends(get_db)) -> d
     return {"id": job_id, "old_status": old_status, "new_status": "failed"}
 
 
+@app.post("/admin/requeue-job/{job_id}")
+def requeue_job(job_id: str, token: str = "", db: Session = Depends(get_db)) -> dict:
+    _require_admin(token)
+    from app.models import Job, JobStatus
+    job = db.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    old_status = job.status.value
+    job.status = JobStatus.queued
+    job.started_at = None
+    job.finished_at = None
+    job.error_code = None
+    job.error_message = None
+    db.commit()
+    return {"id": job_id, "old_status": old_status, "new_status": "queued"}
+
+
+@app.post("/admin/delete-job/{job_id}")
+def delete_job(job_id: str, token: str = "", db: Session = Depends(get_db)) -> dict:
+    _require_admin(token)
+    from app.models import Job
+    job = db.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    db.delete(job)
+    db.commit()
+    return {"id": job_id, "deleted": True}
+
+
 @app.post("/admin/cleanup")
 def admin_cleanup(token: str = "", db: Session = Depends(get_db)) -> dict:
-    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid admin token")
+    _require_admin(token)
     import shutil
+    import subprocess
     from app.models import Job, JobStatus
     cleaned = {"job_dirs": 0, "youtube_cache_files": 0, "failed_jobs_deleted": 0}
 
-    # Delete job working directories (audio files, temp downloads)
     storage = settings.storage_root
     if storage.exists():
         for item in storage.iterdir():
@@ -188,22 +234,18 @@ def admin_cleanup(token: str = "", db: Session = Depends(get_db)) -> dict:
                 shutil.rmtree(item, ignore_errors=True)
                 cleaned["job_dirs"] += 1
 
-    # Clear YouTube cache
     yt_cache = storage / "_youtube_cache"
     if yt_cache.exists():
         for item in yt_cache.iterdir():
             item.unlink(missing_ok=True)
             cleaned["youtube_cache_files"] += 1
 
-    # Delete old failed job DB rows (keep last 5)
     failed = db.query(Job).filter(Job.status == JobStatus.failed).order_by(Job.created_at.desc()).all()
     for job in failed[5:]:
         db.delete(job)
         cleaned["failed_jobs_deleted"] += 1
     db.commit()
 
-    # Report disk usage
-    import subprocess
     du = subprocess.run(["du", "-sh", str(settings.storage_root.parent)], capture_output=True, text=True)
     cleaned["disk_usage"] = du.stdout.strip()
     return cleaned
@@ -211,8 +253,7 @@ def admin_cleanup(token: str = "", db: Session = Depends(get_db)) -> dict:
 
 @app.post("/admin/reset-stuck-jobs")
 def reset_stuck_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
-    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid admin token")
+    _require_admin(token)
     from app.models import Job, JobStatus
     stuck = db.query(Job).filter(Job.status == JobStatus.running).all()
     count = 0
@@ -228,8 +269,7 @@ def reset_stuck_jobs(token: str = "", db: Session = Depends(get_db)) -> dict:
 
 @app.post("/admin/upload-cookies")
 async def upload_cookies(file: UploadFile, token: str = "") -> dict:
-    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid admin token")
+    _require_admin(token)
     cookies_path = settings.storage_root.parent / "cookies.txt"
     content = await file.read()
     cookies_path.write_bytes(content)

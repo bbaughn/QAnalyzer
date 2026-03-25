@@ -34,3 +34,4 @@ class Job(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     audio_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    analyzer_version: Mapped[str | None] = mapped_column(String(32), nullable=True)

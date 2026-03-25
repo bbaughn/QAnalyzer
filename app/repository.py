@@ -13,7 +13,8 @@ class JobRepository:
         self.db = db
 
     def create_job(self, *, source_type: str, source: str, analysis_profile: str, options: dict) -> Job:
-        job = Job(source_type=source_type, source=source, analysis_profile=analysis_profile, options=options)
+        from app.config import settings as app_settings
+        job = Job(source_type=source_type, source=source, analysis_profile=analysis_profile, options=options, analyzer_version=app_settings.app_version)
         self.db.add(job)
         self.db.commit()
         self.db.refresh(job)
