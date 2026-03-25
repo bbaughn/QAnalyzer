@@ -42,6 +42,16 @@ def index() -> FileResponse:
 
 @app.post("/v1/analyze", response_model=AnalyzeSubmissionResponse)
 def submit_analysis(payload: AnalyzeRequest, db: Session = Depends(get_db)) -> AnalyzeSubmissionResponse:
+    from app.models import Job, JobStatus
+    # Return existing succeeded job if one exists for this source
+    existing = (
+        db.query(Job)
+        .filter(Job.source == payload.source, Job.status == JobStatus.succeeded)
+        .order_by(Job.finished_at.desc())
+        .first()
+    )
+    if existing:
+        return AnalyzeSubmissionResponse(job_id=existing.id, status="succeeded")
     repo = JobRepository(db)
     job = repo.create_job(
         source_type=payload.source_type,
