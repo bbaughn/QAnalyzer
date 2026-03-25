@@ -219,6 +219,18 @@ def delete_job(job_id: str, token: str = "", db: Session = Depends(get_db)) -> d
     return {"id": job_id, "deleted": True}
 
 
+@app.post("/admin/delete-all-failed")
+def delete_all_failed(token: str = "", db: Session = Depends(get_db)) -> dict:
+    _require_admin(token)
+    from app.models import Job, JobStatus
+    failed = db.query(Job).filter(Job.status == JobStatus.failed).all()
+    count = len(failed)
+    for job in failed:
+        db.delete(job)
+    db.commit()
+    return {"deleted": count}
+
+
 @app.post("/admin/cleanup")
 def admin_cleanup(token: str = "", db: Session = Depends(get_db)) -> dict:
     _require_admin(token)

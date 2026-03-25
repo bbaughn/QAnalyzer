@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QAnalyzer Admin</title>
+<title>Dashboard</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; padding: 20px; }
@@ -52,6 +52,7 @@
   <button onclick="refresh()">Refresh</button>
   <button class="warn" onclick="resetStuck()">Reset Stuck Jobs</button>
   <button class="danger" onclick="cleanup()">Cleanup Disk</button>
+  <button class="danger" onclick="deleteAllFailed()">Delete All Failed</button>
   <div class="cookie-form">
     <input type="file" id="cookieFile" accept=".txt">
     <button class="green" onclick="uploadCookies()">Upload Cookies</button>
@@ -192,6 +193,13 @@ async function deleteJob(id) {
 async function resetStuck() {
   const r = await api('POST', '/admin/reset-stuck-jobs');
   toast(`Reset ${r.reset} stuck jobs`);
+  refresh();
+}
+
+async function deleteAllFailed() {
+  if (!confirm('Delete ALL failed jobs?')) return;
+  const r = await api('POST', '/admin/delete-all-failed');
+  toast(`Deleted ${r.deleted} failed jobs`);
   refresh();
 }
 
