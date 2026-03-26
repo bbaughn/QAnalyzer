@@ -4,12 +4,15 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 
+import math
+
 import librosa
 import numpy as np
 
 from app.config import settings
 
 KEYS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
+_SEMITONE_RATIO = 1.0595
 
 # Modes that share a minor third above the root (b3 in scale degree terms).
 # Within this family, transitions like minor↔dorian are tonal colour shifts,
@@ -1904,6 +1907,14 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     sections = _apply_section_tuning(sections, global_tuning_cents=global_tuning_cents)
     for s in sections:
         s["tempo_bpm_rounded"] = int(round(s["tempo_bpm"])) if s.get("tempo_bpm") is not None else None
+        bpm = s.get("tempo_bpm")
+        tuning_cents = s.get("tuning") or 0
+        if bpm and bpm > 0:
+            shift_float = -math.log(bpm / 120.0) / math.log(_SEMITONE_RATIO) + tuning_cents / 100.0
+            shift = math.ceil(shift_float)
+            s["range"] = (-shift) % 12
+        else:
+            s["range"] = None
 
     global_bpm = float(np.median([s["bpm"] for s in tempo_segments])) if tempo_segments else float(tempo_raw)
     global_bpm_conf = (
