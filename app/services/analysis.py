@@ -1727,10 +1727,8 @@ def extract_audio_features(path: str) -> dict:
 
     import gc
 
-    # Use chroma_stft instead of chroma_cqt — CQT allocates huge intermediate
-    # matrices that push peak memory too high for constrained environments.
-    print(f"[analysis] Computing chroma STFT... mem={_mem_mb():.0f}MB", flush=True)
-    chroma = librosa.feature.chroma_stft(y=y, sr=sr, hop_length=hop_length)
+    print(f"[analysis] Computing chroma CQT... mem={_mem_mb():.0f}MB", flush=True)
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=hop_length)
     gc.collect()
     chroma_sync = librosa.util.sync(chroma, beat_frames, aggregate=np.mean) if beat_frames.size > 1 else chroma
     print(f"[analysis] Chroma done. mem={_mem_mb():.0f}MB", flush=True)
@@ -1746,35 +1744,24 @@ def extract_audio_features(path: str) -> dict:
     gc.collect()
     print(f"[analysis] Pre-HPSS features done. mem={_mem_mb():.0f}MB", flush=True)
 
-    # HPSS with coarse hop (4x) to reduce STFT matrix size.
-    # We only need rough harmonic/percussive energy ratios.
-    hpss_hop = hop_length * 4
-    print(f"[analysis] Computing STFT for HPSS (hop={hpss_hop})... mem={_mem_mb():.0f}MB", flush=True)
-    S = librosa.stft(y, n_fft=2048, hop_length=hpss_hop)
+    # Time-domain HPSS — librosa.effects.hpss reconstructs y_harm/y_perc via ISTFT.
+    # Per-frame RMS from the reconstructed waveforms gives accurate percussive_ratio
+    # (STFT-magnitude-based approaches overestimate percussive content for tonal
+    # tracks because np.mean over frequency bins biases toward broadband signals).
+    print(f"[analysis] Computing HPSS... mem={_mem_mb():.0f}MB", flush=True)
+    y_harm, y_perc = librosa.effects.hpss(y)
     del y
     gc.collect()
-    print(f"[analysis] STFT done, y freed. mem={_mem_mb():.0f}MB", flush=True)
+    print(f"[analysis] HPSS done, y freed. mem={_mem_mb():.0f}MB", flush=True)
 
-    S_harm, S_perc = librosa.decompose.hpss(S)
-    del S
-    gc.collect()
-    print(f"[analysis] HPSS done. mem={_mem_mb():.0f}MB", flush=True)
+    rms_perc = librosa.feature.rms(y=y_perc, hop_length=hop_length)[0]
+    rms_harm = librosa.feature.rms(y=y_harm, hop_length=hop_length)[0]
+    percussive_ratio_per_frame = rms_perc / (rms_harm + rms_perc + 1e-9)
 
-    rms_harm = np.sqrt(np.mean(np.abs(S_harm) ** 2, axis=0))
-    rms_perc = np.sqrt(np.mean(np.abs(S_perc) ** 2, axis=0))
-    percussive_ratio_per_frame_coarse = rms_perc / (rms_harm + rms_perc + 1e-9)
-    # Interpolate back to original hop resolution
-    n_frames_original = 1 + len(onset_env)  # approximate original frame count
-    percussive_ratio_per_frame = np.interp(
-        np.linspace(0, 1, n_frames_original),
-        np.linspace(0, 1, len(percussive_ratio_per_frame_coarse)),
-        percussive_ratio_per_frame_coarse,
+    perc_energy_ratio = float(
+        np.sum(np.abs(y_perc)) / (np.sum(np.abs(y_harm)) + np.sum(np.abs(y_perc)) + 1e-9)
     )
-
-    harm_energy = float(np.sum(np.abs(S_harm) ** 2))
-    perc_energy = float(np.sum(np.abs(S_perc) ** 2))
-    perc_energy_ratio = perc_energy / (harm_energy + perc_energy + 1e-9)
-    del S_harm, S_perc
+    del y_harm, y_perc
     gc.collect()
     print(f"[analysis] Feature extraction complete. mem={_mem_mb():.0f}MB", flush=True)
 

@@ -12,7 +12,7 @@ class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/edm_analysis.db")
     storage_root: Path = Path(os.getenv("STORAGE_ROOT", "./data/storage"))
     temp_root: Path = Path(os.getenv("TEMP_ROOT", "./data/tmp"))
-    analysis_sr: int = int(os.getenv("ANALYSIS_SAMPLE_RATE", "22050"))
+    analysis_sr: int = int(os.getenv("ANALYSIS_SAMPLE_RATE", "44100"))
     harmonic_conf_threshold: float = float(os.getenv("HARMONIC_CONF_THRESHOLD", "0.32"))
     harmonic_consecutive_beats: int = int(os.getenv("HARMONIC_CONSECUTIVE_BEATS", "8"))
     harmonic_perc_threshold: float = float(os.getenv("HARMONIC_PERC_THRESHOLD", "0.40"))
