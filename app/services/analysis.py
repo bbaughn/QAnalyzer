@@ -501,6 +501,42 @@ def _segment_key_timeline(
     else:
         global_root_idx = argmax_idx
 
+    # Phrygian/locrian-on-b1 guard.
+    #
+    # When the underlying Krumhansl winner is phrygian/locrian on PC X and the
+    # next-best minor-family candidate on PC X+1 is within 0.005 of the winner,
+    # the phrygian/locrian win is almost always spurious: the b2 slot of phrygian
+    # rooted on X coincides with the tonic of minor on X+1, so a track with
+    # strong tonic + b1 sub-bass bleed scores nearly identically under both
+    # interpretations.  Redirect to the minor candidate when this near-tie matches.
+    # Tight margin (0.005) keeps this from firing on real phrygian/locrian tracks.
+    #
+    # Note: _key_from_chroma relabels locrian→minor and may then escalate
+    # minor→dorian, so we re-score against the raw mode profiles here rather
+    # than reading global_key_est.mode.
+    _phrygian_b1_redirected = False
+    if krumhansl_idx == global_root_idx:
+        _chroma_n = global_chroma / (np.linalg.norm(global_chroma) + 1e-9)
+        _winner_phr = float(np.dot(_chroma_n, np.roll(
+            next(p for n, p in _MODE_PROFILES_NORM if n == "phrygian"), krumhansl_idx)))
+        _winner_loc = float(np.dot(_chroma_n, np.roll(
+            next(p for n, p in _MODE_PROFILES_NORM if n == "locrian"), krumhansl_idx)))
+        _winner_phr_loc = max(_winner_phr, _winner_loc)
+        if _winner_phr_loc >= global_key_est.confidence - 1e-6:
+            _alt_root = (krumhansl_idx + 1) % 12
+            _alt_best_score = -1.0
+            _alt_best_mode = None
+            for _mn, _p in _MODE_PROFILES_NORM:
+                if _mn not in _MINOR_FAMILY or _mn in {"phrygian", "locrian"}:
+                    continue
+                _s = float(np.dot(_chroma_n, np.roll(_p, _alt_root)))
+                if _s > _alt_best_score:
+                    _alt_best_score = _s
+                    _alt_best_mode = _mn
+            if _alt_best_score >= _winner_phr_loc - 0.005:
+                global_root_idx = _alt_root
+                _phrygian_b1_redirected = True
+
     _p5_corrected = False  # set to True if the P5-above correction fires below
 
     # "Detected root is the 5th" correction for minor keys.
@@ -565,7 +601,7 @@ def _segment_key_timeline(
     # in MIDI).  A 35% threshold on the MIDI root's weight prevents spurious
     # redirects when MIDI transcription is sparse or noisy.
     if (
-        not _p5_corrected and not _midi_redirected
+        not _p5_corrected and not _midi_redirected and not _phrygian_b1_redirected
         and midi_pc_hist is not None and settings.enable_midi_key_assist
     ):
         _midi_h = np.array(midi_pc_hist, dtype=float)
@@ -651,6 +687,22 @@ def _segment_key_timeline(
         for _seg in raw:
             if _seg["key"] == _cand_key and _seg["mode"] != "minor":
                 _seg["mode"] = "minor"
+
+    # When the phrygian-b1 guard fires we trust the global root strongly
+    # (the redirect only happens on a near-tie pattern that signals overtone
+    # bleed at b1).  Override per-window segments rooted on the rejected b1
+    # PC to the new global root, taking mode from the local minor-family
+    # candidate on the new root — this prevents downstream confirm/fallback
+    # logic from re-anchoring on the discarded root via per-window scatter.
+    if _phrygian_b1_redirected:
+        _rejected_idx = (global_root_idx - 1) % 12
+        _new_key = KEYS[global_root_idx]
+        for _seg in raw:
+            if KEYS.index(_seg["key"]) == _rejected_idx:
+                _seg["key"] = _new_key
+                if _seg["mode"] not in _MINOR_FAMILY or _seg["mode"] in {"phrygian", "locrian"}:
+                    _seg["mode"] = "minor"
+
     raw_coalesced = _coalesce_key_segments_same_label(raw)
     confirmed = _confirm_key_segments(raw)
     # Fallback: if _confirm_key_segments collapses the track to a single segment
@@ -658,11 +710,44 @@ def _segment_key_timeline(
     # so no (key, mode) pair runs long enough to confirm), try root-level
     # detection.  This groups windows by root only, ignoring mode cycling, and
     # determines mode from aggregate chroma per confirmed root period.
-    if len(confirmed) <= 1:
+    #
+    # Skip the fallback when the single confirmed segment is high-confidence AND
+    # rooted on global_root_idx — that is per-window consensus, not scatter, so
+    # bin-level second-guessing tends to overfit on local chroma anomalies (e.g.
+    # a sustained b1 pad in the breakdown that briefly outweighs the tonic).
+    # Also skip the fallback when the phrygian-b1 guard fired — the bin-level
+    # detection re-scores raw chroma and would re-introduce the same b1 bleed
+    # the guard just rejected.
+    _skip_fallback = (
+        _phrygian_b1_redirected
+        or (
+            len(confirmed) == 1
+            and KEYS.index(confirmed[0]["key"]) == global_root_idx
+            and confirmed[0]["confidence"] >= 0.65
+        )
+    )
+    if len(confirmed) <= 1 and not _skip_fallback:
         root_confirmed = _confirm_root_change_segments(raw, chroma_sync, beat_times)
         if len(root_confirmed) >= 2:
             confirmed = root_confirmed
             raw_coalesced = root_confirmed
+
+    # When phrygian-b1 fired, force the final result onto global_root_idx — the
+    # per-window first-run anchor (e.g. an intro on a different PC) can otherwise
+    # pin confirmed[0] to a non-tonic root despite the global redirect.
+    if _phrygian_b1_redirected:
+        _new_key = KEYS[global_root_idx]
+        _new_mode_counts: Counter = Counter()
+        for _seg in raw:
+            if _seg["key"] == _new_key:
+                _new_mode_counts[_seg["mode"]] += 1
+        _new_mode = _new_mode_counts.most_common(1)[0][0] if _new_mode_counts else "minor"
+        _start = float(beat_times[0]) if beat_times.size else 0.0
+        _end = float(beat_times[-1]) if beat_times.size else 0.0
+        _forced = [{"start": _start, "end": _end, "key": _new_key,
+                    "mode": _new_mode, "confidence": float(global_key_est.confidence)}]
+        confirmed = _forced
+        raw_coalesced = list(_forced)
     # Refine minor→dorian using aggregate chroma within each segment.
     # Per-window detection is too noisy for this distinction; segment-mean
     # chroma gives a reliable m6/b6 ratio (see _apply_segment_dorian_refinement).
@@ -720,6 +805,27 @@ def _confirm_root_change_segments(
             continue
         agg = np.mean(chroma_sync[:, cols], axis=1)
         est = _key_from_chroma(agg)
+        # Phrygian/locrian-on-b1 guard (see _segment_key_timeline for rationale).
+        _krum_idx = KEYS.index(est.key)
+        _agg_n = agg / (np.linalg.norm(agg) + 1e-9)
+        _winner_phr = float(np.dot(_agg_n, np.roll(
+            next(p for n, p in _MODE_PROFILES_NORM if n == "phrygian"), _krum_idx)))
+        _winner_loc = float(np.dot(_agg_n, np.roll(
+            next(p for n, p in _MODE_PROFILES_NORM if n == "locrian"), _krum_idx)))
+        _winner_phr_loc = max(_winner_phr, _winner_loc)
+        if _winner_phr_loc >= est.confidence - 1e-6:
+            _alt_root = (_krum_idx + 1) % 12
+            _alt_best_score = -1.0
+            _alt_best_mode = None
+            for _mn, _p in _MODE_PROFILES_NORM:
+                if _mn not in _MINOR_FAMILY or _mn in {"phrygian", "locrian"}:
+                    continue
+                _s = float(np.dot(_agg_n, np.roll(_p, _alt_root)))
+                if _s > _alt_best_score:
+                    _alt_best_score = _s
+                    _alt_best_mode = _mn
+            if _alt_best_score >= _winner_phr_loc - 0.005:
+                est = KeyEstimate(key=KEYS[_alt_root], mode=_alt_best_mode, confidence=_alt_best_score)
         bin_roots.append((lo, hi, est.key, float(est.confidence)))
 
     if len(bin_roots) < 2:
