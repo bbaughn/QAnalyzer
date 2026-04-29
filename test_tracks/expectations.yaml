@@ -740,6 +740,34 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Tunnel Run"
+    artist: "Mother Of Pearls"
+    file: "test_tracks/tunnel_run.wav"
+    expected:
+      bpm: 155
+      bpm_end: 155
+      # Key passing via phrygian-on-b1 guard.
+      # Without the guard, global Krumhansl picks Gb locrian by 0.0009 over G minor;
+      # the guard detects this near-tie pattern (phrygian/locrian on PC X with a
+      # minor-family candidate on X+1 within 0.005) and redirects to G minor,
+      # since the b2 slot of phrygian-on-X coincides with the tonic of minor-on-X+1
+      # for tracks with strong tonic + b1 sub-bass bleed (kick + bass overtones
+      # leaking into the bin one semitone below the true tonic).
+      key:
+        root: "G"
+        mode: "minor"
+      key_end:
+        root: "G"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: algorithm detects 24 bars (percussion enters at bar 25). True entry
+      # is bar 17. Likely false harmonic onset delay from the quiet intro elements
+      # extending the pre-percussion window past the actual drum entry.
+      bars_percussion: 16
+      swing: false
+
   - title: "Sometimes I Feel Like I'm Ruining Songs"
     artist: "Vegyn"
     file: "test_tracks/vegyn.wav"
