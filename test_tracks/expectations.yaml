@@ -47,10 +47,13 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: algorithm detects 24 bars (percussion enters at bar 25). True
-      # entry is bar 1 (no harmonic intro). Likely a false harmonic onset delay
-      # — the track opens with full drums but early transients may be below the
-      # consecutive-beat threshold.
+      # FAILING: algorithm detects 24 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 0 — drums and
+      # harmony coexist from beat 1.  The harmonic-start detector requires
+      # a window of consecutive beats with stable chroma + low percussive
+      # ratio + low attack/sustain, but heavy drums from the start push
+      # those thresholds and the harmonic content isn't "recognized" until
+      # much later in the track.
       bars_percussion: 0
       swing: false
 
@@ -79,11 +82,12 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: algorithm now detects 8-bar harmonic intro before drums (newly
-      # visible after no_drums was fixed by the soft-drums rescue — previously
-      # masked because no_drums=True forces bars_percussion=0).  True entry is
-      # bar 1.  Same harmonic-onset false-delay pattern as Blooms / Tikken /
-      # Vegyn / Time of Nectar / Soft Light.
+      # FAILING: algorithm now detects 8 bars of percussion-only intro before
+      # harmonic content joins (newly visible after no_drums was fixed by the
+      # soft-drums rescue — previously masked because no_drums=True forces
+      # bars_percussion=0).  True bars_percussion is 0 — drums and harmony
+      # coexist from beat 1.  Same harmonic-start false-delay pattern as
+      # Blooms / Tikken / Vegyn / Time of Nectar / Soft Light.
       bars_percussion: 0
       swing: false
 
@@ -569,6 +573,10 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
+      # FAILING: algorithm detects 24 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 0 — drums and
+      # harmony coexist from beat 1.  Same harmonic-start false-delay
+      # pattern as Blooms / Tikken / Vegyn / Time of Nectar / Soft Light.
       bars_percussion: 0
       swing: false
 
@@ -698,8 +706,9 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: algorithm detects 120-bar harmonic intro before drums; true
-      # entry is bar 1 (drums from start).  Same harmonic-onset false-delay
+      # FAILING: algorithm detects 120 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 0 — drums and
+      # harmony coexist from beat 1.  Same harmonic-start false-delay
       # pattern as Time of Nectar / Blooms / Tikken / Vegyn.
       bars_percussion: 0
       swing: false
@@ -778,9 +787,11 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: algorithm detects 2 bars (percussion enters at bar 3). True entry is
-      # bar 1 (no intro). The quiet melodic element in bars 1–2 is low in the mix but
-      # triggers the harmonic onset detector, causing a false percussion delay.
+      # FAILING: algorithm detects 2 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 0 — drums and
+      # harmony coexist from beat 1.  The quiet melodic element in bars
+      # 1-2 is too soft for the harmonic-start detector, so it waits until
+      # the melody gets louder and reports a 2-bar false delay.
       bars_percussion: 0
       swing: false
 
@@ -802,10 +813,12 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: algorithm detects 40-bar harmonic intro before drums; true
-      # entry is bar 1 (drums from start).  Same harmonic-onset false-delay
-      # pattern as Blooms / Tikken / Vegyn — quiet melodic elements confuse
-      # the percussion entry detector.
+      # FAILING: algorithm detects 40 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 0 — drums and
+      # harmony coexist from beat 1.  Same harmonic-start false-delay
+      # pattern as Blooms / Tikken / Vegyn — the harmonic-start detector
+      # waits for a sufficiently strong/stable harmonic window and
+      # under-counts harmonic content present from the start.
       bars_percussion: 0
       swing: false
 
@@ -852,9 +865,12 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: algorithm detects 24 bars (percussion enters at bar 25). True entry
-      # is bar 17. Likely false harmonic onset delay from the quiet intro elements
-      # extending the pre-percussion window past the actual drum entry.
+      # FAILING: algorithm detects 24 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 16 — drums play
+      # alone for 16 bars, then harmonic content joins at bar 17.  The
+      # quiet harmonic elements at bars 17-24 are too soft for the
+      # harmonic-start detector, so it waits for the louder section and
+      # reports an 8-bar over-count.
       bars_percussion: 16
       swing: false
 
@@ -879,9 +895,13 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
-      # FAILING: true entry is bar 4 (~7s) but detector finds bar 14 (~26s).
-      # High-atk drum transients at beats 12, 13, 20, 22 break the consecutive-8
-      # requirement, delaying detection. Fix requires a majority (not all-or-nothing)
-      # consecutive check.
+      # FAILING: algorithm detects 16 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 4 — drums play
+      # alone for 4 bars, then harmonic content joins at bar 5 (~7s).
+      # Within the harmonic-content stretch, high-attack drum transients
+      # at beats 12, 13, 20, 22 break the consecutive-8 requirement of
+      # the harmonic-start detector, pushing the detected harmonic entry
+      # later and over-counting the percussion-only intro.  Fix would
+      # require a majority (not all-or-nothing) consecutive check.
       bars_percussion: 4
       swing: false
