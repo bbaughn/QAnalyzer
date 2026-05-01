@@ -719,6 +719,31 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Time of Nectar"
+    artist: "Tornado Wallace ft. Jonny Nash"
+    file: "test_tracks/time_of_nectar.wav"
+    expected:
+      bpm: 107
+      bpm_end: 107
+      # Listened-correction: spreadsheet originally said Bbm, but Eb minor fits
+      # the audio better (and the MIDI evidence: Gb=40%, Eb=26%, Bb=20%, Db=10%
+      # — top 4 PCs are 1/b3/5/b7 of Eb minor with Eb the second-strongest).
+      key:
+        root: "Eb"
+        mode: "minor"
+      key_end:
+        root: "Eb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: algorithm detects 40-bar harmonic intro before drums; true
+      # entry is bar 1 (drums from start).  Same harmonic-onset false-delay
+      # pattern as Blooms / Tikken / Vegyn — quiet melodic elements confuse
+      # the percussion entry detector.
+      bars_percussion: 0
+      swing: false
+
   - title: "To The Edge of the World"
     artist: "Aera"
     file: "test_tracks/to_the_edge.wav"
