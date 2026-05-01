@@ -1785,16 +1785,28 @@ def _percussion_presence(
     # Empirical separation: jettison (no drums, staccato synth) p95=0.501;
     # all drums tracks p95 ≥ 0.620. Threshold at 0.55 gives clear headroom.
     #
-    # Two rescue paths bypass this gate when HPSS separation is unreliable:
+    # Three rescue paths bypass this gate when HPSS separation is unreliable:
     # 1. High-attack rescue: very large per-beat attack/sustain ratios mean real
     #    drum hits whose broadband energy confused HPSS.
     # 2. Tonal-kick rescue: extremely low perc_ratio_p95 (< 0.35) combined with
     #    a high primary score means resonant/tonal kicks that HPSS routed to the
     #    harmonic component — the contradiction signals HPSS failure, not silence.
+    # 3. Soft-drums rescue: loud onsets present (onset_p95 ≥ 4), beats are NOT
+    #    pure-sustain (atk_p95 < 1.85 — i.e., not the sustained-attack signature
+    #    of pads/leads), and perc_ratio_p95 ≥ 0.40 (HPSS captured *some*
+    #    percussive content).  Catches sub-bass kicks that HPSS partially routed
+    #    to the harmonic component but where the onset signal clearly confirms
+    #    drums (e.g. Burned Oak, Circadia: compressed/filtered kicks below the
+    #    pp95 0.55 threshold but with strong onsets and non-sustain beat shape).
     if perc_ratio_p95 is not None:
         _high_atk = beat_atk_p95 is not None and beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95
         _tonal_kick = perc_ratio_p95 < 0.35 and score > 0.55
-        if not (_high_atk or _tonal_kick) and perc_ratio_p95 < 0.55:
+        _soft_drums = (
+            onset_p95 >= 4.0
+            and beat_atk_p95 is not None and beat_atk_p95 < 1.85
+            and perc_ratio_p95 >= 0.40
+        )
+        if not (_high_atk or _tonal_kick or _soft_drums) and perc_ratio_p95 < 0.55:
             low = True
             if level not in {"none", "low"}:
                 level = "low"

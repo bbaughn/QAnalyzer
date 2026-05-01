@@ -64,8 +64,7 @@ tracks:
       # (Melchom). The track is genuinely tonal (E phrygian dominant throughout per
       # raw key segments), but n_competitive_pcs=4 hits the <=4 threshold.
       # True key is E phrygian (user assessment; spreadsheet records Em).
-      # FAILING: no_drums=True because compressed/smeary drums are absorbed by HPSS
-      # into the harmonic component (perc_energy_ratio=0.15, perc_ratio mean=0.195).
+      # no_drums passing via the soft-drums rescue (added with Circadia).
       bpm: 90
       bpm_end: 90
       key:
@@ -80,8 +79,43 @@ tracks:
       tuning: 0
       tuning_end: 0
       no_drums: false
+      # FAILING: algorithm now detects 8-bar harmonic intro before drums (newly
+      # visible after no_drums was fixed by the soft-drums rescue — previously
+      # masked because no_drums=True forces bars_percussion=0).  True entry is
+      # bar 1.  Same harmonic-onset false-delay pattern as Blooms / Tikken /
+      # Vegyn / Time of Nectar / Soft Light.
       bars_percussion: 0
       swing: false
+
+  - title: "Circadia"
+    artist: "Tornado Wallace"
+    file: "test_tracks/circadia.wav"
+    expected:
+      bpm: 110
+      bpm_end: 110
+      # FAILING: algorithm detects Eb major.  Track is actually Ab minor but
+      # alternates between i (Ab minor triad) and V (Eb major triad) — the
+      # harmonic-minor V chord puts Eb-G-Bb prominently in the MIDI (Eb=59%,
+      # G=21%, Bb=9% — exactly the V chord tones).  Algorithm latches onto
+      # the dominant chord as if it were the tonic.  Distinguishing "minor key
+      # with strong V chord" from "major key on the V chord's root" requires
+      # harmonic structural analysis (chord progression / cadence detection)
+      # rather than note-frequency counting.
+      key:
+        root: "Ab"
+        mode: "minor"
+      key_end:
+        root: "Ab"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      # no_drums passing via the soft-drums rescue: HPSS partially routed the
+      # filtered sub-bass kick to the harmonic component (perc_ratio_p95=0.467,
+      # below the secondary 0.55 gate), but onsets are loud (onset_p95=5.24)
+      # and beats are not pure-sustain (atk_p95=1.80), so the rescue fires.
+      no_drums: false
+      bars_percussion: 0
+      swing: true
 
   - title: "Deflection"
     artist: "Emil Rottmayer"
