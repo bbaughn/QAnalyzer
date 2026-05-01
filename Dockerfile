@@ -1,4 +1,7 @@
-FROM python:3.12-slim
+# Python 3.11 (not 3.12) because basic-pitch 0.3.0 requires tensorflow<2.16
+# on Linux + Python>=3.11, and only TF 2.16+ Linux wheels exist for Python
+# 3.12.  TF 2.15.x has Python 3.11 wheels and satisfies the constraint.
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
