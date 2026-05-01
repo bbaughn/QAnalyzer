@@ -9,3 +9,9 @@ numba==0.59.1
 yt-dlp>=2025.08.27
 python-multipart==0.0.20
 pytest==8.4.1
+# MIDI-assisted key detection — runs Basic-Pitch (ONNX path only, TF imported
+# lazily and never reached at runtime).  setuptools<81 because resampy (a
+# basic-pitch dep) still uses pkg_resources which was removed in setuptools 81.
+basic-pitch==0.3.0
+onnxruntime==1.25.1
+setuptools<81
