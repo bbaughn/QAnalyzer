@@ -665,7 +665,27 @@ def _segment_key_timeline(
                 _curr_mode = max(_all_modes, key=lambda m: _midi_fit(global_root_idx, m))
                 _curr_fit = _midi_fit(global_root_idx, _curr_mode)
                 _best_fit = _midi_fit(_best_root, _best_mode)
-                if _best_root != global_root_idx and _best_fit - _curr_fit >= 0.3:
+                # Relative-minor redirect: when the best candidate is the
+                # canonical natural minor of the current major-family pick's
+                # parent ionian (same diatonic scale, just rooted on the minor
+                # 3rd below), redirect even when the fit diff is small.
+                # Major and its relative minor have identical scales so MIDI
+                # coverage can't distinguish them — but EDM is overwhelmingly
+                # minor, so default to the relative minor on this exact pattern.
+                _MODE_TO_IONIAN_OFFSET = {
+                    "major": 0, "dorian": 2, "phrygian": 4, "lydian": 5,
+                    "mixolydian": 7, "minor": 9, "locrian": 11,
+                }
+                _parent_ionian = (global_root_idx - _MODE_TO_IONIAN_OFFSET.get(_curr_mode, 0)) % 12
+                _relative_minor_root_pc = (_parent_ionian + 9) % 12
+                _relative_minor_redirect = (
+                    _best_mode == "minor"
+                    and _curr_mode in {"major", "lydian", "mixolydian"}
+                    and _best_root == _relative_minor_root_pc
+                )
+                if _best_root != global_root_idx and (
+                    _best_fit - _curr_fit >= 0.3 or _relative_minor_redirect
+                ):
                     global_root_idx = _best_root
                     _midi_redirected = True
 
