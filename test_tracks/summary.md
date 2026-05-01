@@ -1,26 +1,27 @@
 # Test corpus accuracy
 
-Last updated: 2026-05-01 — 35 tracks evaluated.
+Last updated: 2026-05-01 — 36 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 25 | 33 | 75.8% |
-| Key — end (root + mode) | 26 | 33 | 78.8% |
-| Key — all four | 25 | 33 | 75.8% |
-| BPM (start + end) | 29 | 32 | 90.6% |
-| Tuning (start + end) | 33 | 33 | 100.0% |
-| no_drums | 34 | 35 | 97.1% |
-| swing | 34 | 35 | 97.1% |
-| bars_percussion | 28 | 35 | 80.0% |
+| Key — start (root + mode) | 25 | 34 | 73.5% |
+| Key — end (root + mode) | 26 | 34 | 76.5% |
+| Key — all four | 25 | 34 | 73.5% |
+| BPM (start + end) | 30 | 33 | 90.9% |
+| Tuning (start + end) | 34 | 34 | 100.0% |
+| no_drums | 36 | 36 | 100.0% |
+| swing | 35 | 36 | 97.2% |
+| bars_percussion | 28 | 36 | 77.8% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 2 | 2 | 100.0% |
 
 ## Failing tracks
 
 - **Blooms** — bars_percussion
-- **Burned Oak** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), no_drums
+- **Burned Oak** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), bars_percussion
+- **Circadia** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Funky Shit** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Helix** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Ghost of Akina (Aya 2010 All At Once Remix)** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), swing
