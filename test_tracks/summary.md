@@ -1,19 +1,19 @@
 # Test corpus accuracy
 
-Last updated: 2026-04-30 — 34 tracks evaluated.
+Last updated: 2026-05-01 — 35 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 24 | 32 | 75.0% |
-| Key — end (root + mode) | 25 | 32 | 78.1% |
-| Key — all four | 24 | 32 | 75.0% |
-| BPM (start + end) | 28 | 31 | 90.3% |
-| Tuning (start + end) | 32 | 32 | 100.0% |
-| no_drums | 33 | 34 | 97.1% |
-| swing | 33 | 34 | 97.1% |
-| bars_percussion | 28 | 34 | 82.4% |
+| Key — start (root + mode) | 25 | 33 | 75.8% |
+| Key — end (root + mode) | 26 | 33 | 78.8% |
+| Key — all four | 25 | 33 | 75.8% |
+| BPM (start + end) | 29 | 32 | 90.6% |
+| Tuning (start + end) | 33 | 33 | 100.0% |
+| no_drums | 34 | 35 | 97.1% |
+| swing | 34 | 35 | 97.1% |
+| bars_percussion | 28 | 35 | 80.0% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 2 | 2 | 100.0% |
 
@@ -29,6 +29,7 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Maya Bay** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Ocean Chant** — bars_percussion
 - **Untitled** — Key — start (root + mode), Key — end (root + mode), Key — all four
+- **Soft Light** — bars_percussion
 - **Spirit in Tala** — BPM (start + end)
 - **Tikken** — bars_percussion
 - **Time of Nectar** — bars_percussion

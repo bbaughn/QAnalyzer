@@ -625,6 +625,7 @@ def _segment_key_timeline(
     # correct.  Targets cases like Time of Nectar where chroma argmax is a
     # phantom: G chroma 0.78 but MIDI shows G ≈ 0%, while Eb minor's scale
     # accounts for ~100% of MIDI weight.
+    _phantom_overridden_mode: str | None = None
     if (
         not _p5_corrected and not _midi_redirected and not _phrygian_b1_redirected
         and midi_pc_hist is not None and settings.enable_midi_key_assist
@@ -640,54 +641,97 @@ def _segment_key_timeline(
                     _all_cands.append((_s, _sh, _mn))
             _all_cands.sort(reverse=True)
             _top_chroma = _all_cands[0][0]
-            _ambig = [c for c in _all_cands if c[0] >= _top_chroma - 0.015]
-            # Only act when there's genuine ambiguity (3+ close chroma candidates).
-            if len(_ambig) >= 3:
-                # Fitness ranking:
-                #   1. coverage wins (sum of MIDI weight on scale degrees)
-                #   2. at near-tied coverage, prefer minor-family — most EDM is
-                #      minor, and relative major/minor pairs have identical
-                #      scales so coverage cannot distinguish them
-                #   3. final tie-break: higher tonic MIDI weight
-                def _midi_fit(_root: int, _mode: str) -> float:
-                    _scale = _key_pitch_classes(KEYS[_root], _mode)
-                    _cov = sum(float(_midi_n[pc]) for pc in _scale)
-                    _is_minor = 1.0 if _mode in _MINOR_FAMILY else 0.0
-                    _tonic = float(_midi_n[_root])
-                    return _cov + 0.01 * _is_minor + 0.001 * _tonic
-                _best_s, _best_root, _best_mode = max(_ambig, key=lambda c: _midi_fit(c[1], c[2]))
-                # Compare to the best-fitting mode for the *current* root, not
-                # the cross-applied (current_root, krumhansl_mode) combo — that
-                # combo can be nonsensical when argmax overrode Krumhansl on
-                # root but left mode unchanged (e.g. Funky Shit: argmax B,
-                # krumhansl mode 'minor' → B minor scores artificially low).
-                _all_modes = [_n for _n, _ in _MODE_PROFILES_NORM]
-                _curr_mode = max(_all_modes, key=lambda m: _midi_fit(global_root_idx, m))
-                _curr_fit = _midi_fit(global_root_idx, _curr_mode)
-                _best_fit = _midi_fit(_best_root, _best_mode)
-                # Relative-minor redirect: when the best candidate is the
-                # canonical natural minor of the current major-family pick's
-                # parent ionian (same diatonic scale, just rooted on the minor
-                # 3rd below), redirect even when the fit diff is small.
-                # Major and its relative minor have identical scales so MIDI
-                # coverage can't distinguish them — but EDM is overwhelmingly
-                # minor, so default to the relative minor on this exact pattern.
-                _MODE_TO_IONIAN_OFFSET = {
-                    "major": 0, "dorian": 2, "phrygian": 4, "lydian": 5,
-                    "mixolydian": 7, "minor": 9, "locrian": 11,
-                }
-                _parent_ionian = (global_root_idx - _MODE_TO_IONIAN_OFFSET.get(_curr_mode, 0)) % 12
-                _relative_minor_root_pc = (_parent_ionian + 9) % 12
-                _relative_minor_redirect = (
-                    _best_mode == "minor"
-                    and _curr_mode in {"major", "lydian", "mixolydian"}
-                    and _best_root == _relative_minor_root_pc
-                )
-                if _best_root != global_root_idx and (
-                    _best_fit - _curr_fit >= 0.3 or _relative_minor_redirect
-                ):
+
+            def _midi_coverage(_root: int, _mode: str) -> float:
+                return sum(float(_midi_n[pc]) for pc in _key_pitch_classes(KEYS[_root], _mode))
+
+            # Fitness ranking:
+            #   1. coverage wins (sum of MIDI weight on scale degrees)
+            #   2. at near-tied coverage, prefer minor-family — most EDM is
+            #      minor, and relative major/minor pairs have identical
+            #      scales so coverage cannot distinguish them
+            #   3. final tie-break: higher tonic MIDI weight
+            def _midi_fit(_root: int, _mode: str) -> float:
+                _is_minor = 1.0 if _mode in _MINOR_FAMILY else 0.0
+                _tonic = float(_midi_n[_root])
+                return _midi_coverage(_root, _mode) + 0.01 * _is_minor + 0.001 * _tonic
+
+            # Phantom-argmax escape: when the chroma argmax PC has near-zero
+            # MIDI weight, the chroma top is overtone leakage / pitched-
+            # percussion bleed, not a real tonal centre.  Chroma is unreliable
+            # here, so widen the candidate set to ALL high-coverage candidates
+            # (MIDI cov ≥ 0.85) regardless of chroma rank, and override on best
+            # MIDI fit alone.  Targets cases like Soft Light where chroma G
+            # is 0.98 but MIDI G is 1.2% — strong Eb minor candidates sit
+            # outside the 1.5% chroma window so the regular path can't reach
+            # them.
+            #
+            # Use a differentiated mode bonus here (natural minor > dorian >
+            # phrygian > locrian) instead of the flat +0.01 minor-family bonus
+            # the regular branch uses.  Relative-third-apart pairs like Eb
+            # minor / Db dorian share 6/7 PCs and tie on coverage; the natural-
+            # minor bias breaks the tie toward the more common interpretation.
+            def _phantom_fit(_root: int, _mode: str) -> float:
+                _mode_bonus = {
+                    "minor": 0.012, "dorian": 0.008,
+                    "phrygian": 0.006, "locrian": 0.0,
+                }.get(_mode, 0.0)
+                _tonic = float(_midi_n[_root])
+                return _midi_coverage(_root, _mode) + _mode_bonus + 0.001 * _tonic
+
+            _argmax_pc = int(np.argmax(global_chroma))
+            _phantom_argmax = float(_midi_n[_argmax_pc]) < 0.05
+            _high_cov = [c for c in _all_cands if _midi_coverage(c[1], c[2]) >= 0.85]
+            if _phantom_argmax and _high_cov:
+                _best_s, _best_root, _best_mode = max(_high_cov, key=lambda c: _phantom_fit(c[1], c[2]))
+                if _best_root != global_root_idx:
                     global_root_idx = _best_root
                     _midi_redirected = True
+                    # Phantom argmax means chroma is unreliable for mode too —
+                    # per-window detection on the new root would still see the
+                    # phantom chroma energy and could pick the wrong mode (e.g.
+                    # Soft Light: chroma G is 0.98, which fits Eb major's M3
+                    # slot heavily and would tip Eb-rooted per-window detection
+                    # toward Eb major instead of Eb minor).  Override the mode
+                    # globally to the phantom-fit winner.
+                    _phantom_overridden_mode = _best_mode
+            else:
+                _ambig = [c for c in _all_cands if c[0] >= _top_chroma - 0.015]
+                # Only act when there's genuine ambiguity (3+ close chroma candidates).
+                if len(_ambig) >= 3:
+                    _best_s, _best_root, _best_mode = max(_ambig, key=lambda c: _midi_fit(c[1], c[2]))
+                    # Compare to the best-fitting mode for the *current* root, not
+                    # the cross-applied (current_root, krumhansl_mode) combo — that
+                    # combo can be nonsensical when argmax overrode Krumhansl on
+                    # root but left mode unchanged (e.g. Funky Shit: argmax B,
+                    # krumhansl mode 'minor' → B minor scores artificially low).
+                    _all_modes = [_n for _n, _ in _MODE_PROFILES_NORM]
+                    _curr_mode = max(_all_modes, key=lambda m: _midi_fit(global_root_idx, m))
+                    _curr_fit = _midi_fit(global_root_idx, _curr_mode)
+                    _best_fit = _midi_fit(_best_root, _best_mode)
+                    # Relative-minor redirect: when the best candidate is the
+                    # canonical natural minor of the current major-family pick's
+                    # parent ionian (same diatonic scale, just rooted on the minor
+                    # 3rd below), redirect even when the fit diff is small.
+                    # Major and its relative minor have identical scales so MIDI
+                    # coverage can't distinguish them — but EDM is overwhelmingly
+                    # minor, so default to the relative minor on this exact pattern.
+                    _MODE_TO_IONIAN_OFFSET = {
+                        "major": 0, "dorian": 2, "phrygian": 4, "lydian": 5,
+                        "mixolydian": 7, "minor": 9, "locrian": 11,
+                    }
+                    _parent_ionian = (global_root_idx - _MODE_TO_IONIAN_OFFSET.get(_curr_mode, 0)) % 12
+                    _relative_minor_root_pc = (_parent_ionian + 9) % 12
+                    _relative_minor_redirect = (
+                        _best_mode == "minor"
+                        and _curr_mode in {"major", "lydian", "mixolydian"}
+                        and _best_root == _relative_minor_root_pc
+                    )
+                    if _best_root != global_root_idx and (
+                        _best_fit - _curr_fit >= 0.3 or _relative_minor_redirect
+                    ):
+                        global_root_idx = _best_root
+                        _midi_redirected = True
 
     # When the P5-above correction fires the per-window constrained call must
     # always override the unconstrained estimate, so raise the margin to 1.0
@@ -763,6 +807,17 @@ def _segment_key_timeline(
         for _seg in raw:
             if _seg["key"] == _cand_key and _seg["mode"] != "minor":
                 _seg["mode"] = "minor"
+
+    # Phantom-argmax mode override: when the disambiguator picked the root
+    # because chroma was unreliable (phantom argmax), per-window detection
+    # on the new root will see the same phantom chroma energy and could pick
+    # a wrong mode.  Force all windows on the new root to the MIDI-fit-best
+    # mode that the disambiguator chose.
+    if _phantom_overridden_mode is not None:
+        _new_key = KEYS[global_root_idx]
+        for _seg in raw:
+            if _seg["key"] == _new_key:
+                _seg["mode"] = _phantom_overridden_mode
 
     # When the phrygian-b1 guard fires we trust the global root strongly
     # (the redirect only happens on a near-tie pattern that signals overtone
