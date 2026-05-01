@@ -2179,6 +2179,8 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
 
     perc_ratio_p95 = float(np.percentile(percussive_ratio_per_frame, 95))
     beat_atk_p95 = float(np.percentile(beat_attack_sustain, 95))
+    onset_p95 = float(np.percentile(onset_env, 95))
+    primary_score = 0.5 * min(1.0, perc_energy_ratio / 0.7) + 0.5 * min(1.0, onset_p95 / 2.0)
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
         onset_env,
         perc_energy_ratio=perc_energy_ratio,
@@ -2186,6 +2188,22 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         beat_atk_p95=beat_atk_p95,
     )
     _ = percussion_presence, percussion_conf
+    percussion_debug = {
+        "perc_energy_ratio": float(perc_energy_ratio),
+        "onset_p95": onset_p95,
+        "perc_ratio_p95": perc_ratio_p95,
+        "beat_atk_p95": beat_atk_p95,
+        "primary_score": primary_score,
+        "rescues": {
+            "high_atk": bool(beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95),
+            "tonal_kick": bool(perc_ratio_p95 < 0.35 and primary_score > 0.55),
+            "soft_drums": bool(
+                onset_p95 >= 4.0
+                and beat_atk_p95 < 1.90
+                and perc_ratio_p95 >= 0.35
+            ),
+        },
+    }
 
     swing_feel, swing_confidence = _swing_from_grid(beat_times, onset_times)
     _ = swing_confidence
@@ -2344,6 +2362,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
                 "mode": global_key["mode"],
                 "confidence": float(np.clip((global_bpm_conf + global_key["confidence"]) / 2, 0.0, 1.0)),
             },
+            "percussion_debug": percussion_debug,
             "run_duration_sec": elapsed,
         },
     }
