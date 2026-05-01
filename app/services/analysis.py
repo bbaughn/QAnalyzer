@@ -1791,23 +1791,25 @@ def _percussion_presence(
     # 2. Tonal-kick rescue: extremely low perc_ratio_p95 (< 0.35) combined with
     #    a high primary score means resonant/tonal kicks that HPSS routed to the
     #    harmonic component — the contradiction signals HPSS failure, not silence.
-    # 3. Soft-drums rescue: loud onsets present (onset_p95 ≥ 4), beats are NOT
-    #    pure-sustain (atk_p95 < 1.90 — i.e., not the sustained-attack signature
-    #    of pads/leads — Lindwurm sits at 1.939 so this stays a hair below it),
-    #    and perc_ratio_p95 ≥ 0.35 (HPSS captured *some* percussive content).
-    #    Catches sub-bass kicks that HPSS partially routed to the harmonic
-    #    component but where the onset signal clearly confirms drums (e.g.
-    #    Burned Oak, Circadia: compressed/filtered kicks below the pp95 0.55
-    #    threshold but with strong onsets and non-sustain beat shape).
-    #    Thresholds chosen with ~0.05 headroom for ARM/x86 feature drift —
-    #    deployed Linux/x86 produces slightly different beat_attack_sustain
-    #    and perc_ratio_per_frame values than local ARM/Mac extraction.
+    # 3. Soft-drums rescue: loud onsets present (onset_p95 ≥ 4) and a low
+    #    perc_energy_ratio (< 0.20) indicating HPSS routed real drums to the
+    #    harmonic component (smeary/compressed/sub-bass kicks).  Counter-
+    #    intuitively, no-drums staccato-synth tracks have HIGHER pe (0.22-0.25
+    #    for Lindwurm/Jettison) because synth attacks route cleanly to the
+    #    percussive component, while real drums with HPSS-confusing character
+    #    have LOWER pe.
+    #
+    #    pe is computed from raw HPSS waveform RMS (independent of beat
+    #    tracking) so it's stable across ARM/x86.  An earlier version used
+    #    beat_atk_p95 < 1.90 here, but that drifted by ~0.12 between local
+    #    and deployed (Circadia: local 1.80 → deployed 1.92), missing the
+    #    threshold on deployed and leaving no_drums broken in production.
     if perc_ratio_p95 is not None:
         _high_atk = beat_atk_p95 is not None and beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95
         _tonal_kick = perc_ratio_p95 < 0.35 and score > 0.55
         _soft_drums = (
             onset_p95 >= 4.0
-            and beat_atk_p95 is not None and beat_atk_p95 < 1.90
+            and perc_energy_ratio is not None and perc_energy_ratio < 0.20
             and perc_ratio_p95 >= 0.35
         )
         if not (_high_atk or _tonal_kick or _soft_drums) and perc_ratio_p95 < 0.55:
@@ -2199,7 +2201,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
             "tonal_kick": bool(perc_ratio_p95 < 0.35 and primary_score > 0.55),
             "soft_drums": bool(
                 onset_p95 >= 4.0
-                and beat_atk_p95 < 1.90
+                and perc_energy_ratio < 0.20
                 and perc_ratio_p95 >= 0.35
             ),
         },
