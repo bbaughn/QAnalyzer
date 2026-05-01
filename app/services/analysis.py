@@ -613,6 +613,62 @@ def _segment_key_timeline(
                 global_root_idx = _midi_root
                 _midi_redirected = True
 
+    # MIDI-driven Krumhansl tie-breaker.
+    #
+    # When chroma's top Krumhansl candidates are clustered within 1.5% of the
+    # winner (no clear tonal centre per chroma), let MIDI break the tie by
+    # scoring each ambiguous candidate's diatonic coverage in the MIDI
+    # histogram.  Candidates whose scale notes account for substantially more
+    # MIDI weight than the current pick win, even when their chroma score is
+    # slightly lower.  Only fires when the MIDI improvement is large (≥0.3
+    # absolute coverage) so it doesn't perturb tracks where chroma was already
+    # correct.  Targets cases like Time of Nectar where chroma argmax is a
+    # phantom: G chroma 0.78 but MIDI shows G ≈ 0%, while Eb minor's scale
+    # accounts for ~100% of MIDI weight.
+    if (
+        not _p5_corrected and not _midi_redirected and not _phrygian_b1_redirected
+        and midi_pc_hist is not None and settings.enable_midi_key_assist
+    ):
+        _midi_h = np.array(midi_pc_hist, dtype=float)
+        if _midi_h.sum() > 0:
+            _chroma_n = global_chroma / (np.linalg.norm(global_chroma) + 1e-9)
+            _midi_n = _midi_h / _midi_h.sum()
+            _all_cands: list[tuple[float, int, str]] = []
+            for _mn, _p in _MODE_PROFILES_NORM:
+                for _sh in range(12):
+                    _s = float(np.dot(_chroma_n, np.roll(_p, _sh)))
+                    _all_cands.append((_s, _sh, _mn))
+            _all_cands.sort(reverse=True)
+            _top_chroma = _all_cands[0][0]
+            _ambig = [c for c in _all_cands if c[0] >= _top_chroma - 0.015]
+            # Only act when there's genuine ambiguity (3+ close chroma candidates).
+            if len(_ambig) >= 3:
+                # Fitness ranking:
+                #   1. coverage wins (sum of MIDI weight on scale degrees)
+                #   2. at near-tied coverage, prefer minor-family — most EDM is
+                #      minor, and relative major/minor pairs have identical
+                #      scales so coverage cannot distinguish them
+                #   3. final tie-break: higher tonic MIDI weight
+                def _midi_fit(_root: int, _mode: str) -> float:
+                    _scale = _key_pitch_classes(KEYS[_root], _mode)
+                    _cov = sum(float(_midi_n[pc]) for pc in _scale)
+                    _is_minor = 1.0 if _mode in _MINOR_FAMILY else 0.0
+                    _tonic = float(_midi_n[_root])
+                    return _cov + 0.01 * _is_minor + 0.001 * _tonic
+                _best_s, _best_root, _best_mode = max(_ambig, key=lambda c: _midi_fit(c[1], c[2]))
+                # Compare to the best-fitting mode for the *current* root, not
+                # the cross-applied (current_root, krumhansl_mode) combo — that
+                # combo can be nonsensical when argmax overrode Krumhansl on
+                # root but left mode unchanged (e.g. Funky Shit: argmax B,
+                # krumhansl mode 'minor' → B minor scores artificially low).
+                _all_modes = [_n for _n, _ in _MODE_PROFILES_NORM]
+                _curr_mode = max(_all_modes, key=lambda m: _midi_fit(global_root_idx, m))
+                _curr_fit = _midi_fit(global_root_idx, _curr_mode)
+                _best_fit = _midi_fit(_best_root, _best_mode)
+                if _best_root != global_root_idx and _best_fit - _curr_fit >= 0.3:
+                    global_root_idx = _best_root
+                    _midi_redirected = True
+
     # When the P5-above correction fires the per-window constrained call must
     # always override the unconstrained estimate, so raise the margin to 1.0
     # (confidence is bounded to [0, 1], so this forces the corrected root).
