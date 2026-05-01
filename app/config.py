@@ -8,7 +8,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "EDM Analysis Service"
-    app_version: str = "0.2.6"
+    app_version: str = "0.2.7"
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/edm_analysis.db")
     storage_root: Path = Path(os.getenv("STORAGE_ROOT", "./data/storage"))
     temp_root: Path = Path(os.getenv("TEMP_ROOT", "./data/tmp"))

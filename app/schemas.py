@@ -33,3 +33,4 @@ class AnalyzeResultResponse(BaseModel):
     job_id: str
     status: Literal["succeeded"]
     result: dict[str, Any]
+    analyzer_version: str | None = None
