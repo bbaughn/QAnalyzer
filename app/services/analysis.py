@@ -1792,19 +1792,23 @@ def _percussion_presence(
     #    a high primary score means resonant/tonal kicks that HPSS routed to the
     #    harmonic component — the contradiction signals HPSS failure, not silence.
     # 3. Soft-drums rescue: loud onsets present (onset_p95 ≥ 4), beats are NOT
-    #    pure-sustain (atk_p95 < 1.85 — i.e., not the sustained-attack signature
-    #    of pads/leads), and perc_ratio_p95 ≥ 0.40 (HPSS captured *some*
-    #    percussive content).  Catches sub-bass kicks that HPSS partially routed
-    #    to the harmonic component but where the onset signal clearly confirms
-    #    drums (e.g. Burned Oak, Circadia: compressed/filtered kicks below the
-    #    pp95 0.55 threshold but with strong onsets and non-sustain beat shape).
+    #    pure-sustain (atk_p95 < 1.90 — i.e., not the sustained-attack signature
+    #    of pads/leads — Lindwurm sits at 1.939 so this stays a hair below it),
+    #    and perc_ratio_p95 ≥ 0.35 (HPSS captured *some* percussive content).
+    #    Catches sub-bass kicks that HPSS partially routed to the harmonic
+    #    component but where the onset signal clearly confirms drums (e.g.
+    #    Burned Oak, Circadia: compressed/filtered kicks below the pp95 0.55
+    #    threshold but with strong onsets and non-sustain beat shape).
+    #    Thresholds chosen with ~0.05 headroom for ARM/x86 feature drift —
+    #    deployed Linux/x86 produces slightly different beat_attack_sustain
+    #    and perc_ratio_per_frame values than local ARM/Mac extraction.
     if perc_ratio_p95 is not None:
         _high_atk = beat_atk_p95 is not None and beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95
         _tonal_kick = perc_ratio_p95 < 0.35 and score > 0.55
         _soft_drums = (
             onset_p95 >= 4.0
-            and beat_atk_p95 is not None and beat_atk_p95 < 1.85
-            and perc_ratio_p95 >= 0.40
+            and beat_atk_p95 is not None and beat_atk_p95 < 1.90
+            and perc_ratio_p95 >= 0.35
         )
         if not (_high_atk or _tonal_kick or _soft_drums) and perc_ratio_p95 < 0.55:
             low = True
