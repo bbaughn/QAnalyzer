@@ -91,6 +91,27 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Channel 3"
+    artist: "Anthony Naples"
+    file: "test_tracks/channel_3.wav"
+    expected:
+      # Listened-correction: spreadsheet originally said Bb; updated to Ab
+      # after listening (chroma argmax Ab=0.96, MIDI tonic Ab=48%, Ab major
+      # MIDI coverage 0.998 vs Bb major coverage 0.444).
+      # CSV BPM is "ambient" (non-numeric) → no_tempo expected.
+      no_drums: true
+      no_tempo: true
+      key:
+        root: "Ab"
+        mode: "major"
+      key_end:
+        root: "Ab"
+        mode: "major"
+      tuning: 0
+      tuning_end: 0
+      bars_percussion: 0
+      swing: false
+
   - title: "Circadia"
     artist: "Tornado Wallace"
     file: "test_tracks/circadia.wav"
