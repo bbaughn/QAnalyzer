@@ -1235,6 +1235,26 @@ def _tuning_cents_from_offset(offset_semitones: float) -> int:
     return max(-49, min(50, cents))
 
 
+def _snap_tuning(cents: int) -> int:
+    """Quantize raw cents to {-50, -25, 0, +25, +50} biased toward concert pitch.
+
+    librosa.estimate_tuning is reliable when the track is firmly off pitch
+    (Julia clusters at -34±2 across n_fft, Funky Shit at +32±1) or firmly on
+    pitch (Time of Nectar at -1±1).  But it's noisy in the ~13-22c range
+    where the result depends heavily on n_fft and harmonic content (Pearl 3:
+    +18, +13, +14 across n_fft={4096, 8192, 16384}).  Tracks reported in this
+    ambiguous zone tend to sound concert-pitch on careful listening, so the
+    zero-snap zone is widened to ±20c (vs. the naive nearest-multiple-of-25
+    boundary at 12.5c).  Above ±20c, snap to ±25; above ±37c, snap to ±50.
+    """
+    a = abs(cents)
+    if a <= 20:
+        return 0
+    if a <= 37:
+        return 25 if cents > 0 else -25
+    return 50 if cents > 0 else -50
+
+
 def _apply_section_tuning(
     sections: list[dict],
     y: np.ndarray | None = None,
@@ -1274,7 +1294,7 @@ def _apply_section_tuning(
                     pass
         item = seg.copy()
         item["tuning"] = int(cents)
-        item["tuning_rounded"] = int(round(cents / 25) * 25)
+        item["tuning_rounded"] = _snap_tuning(int(cents))
         tuned.append(item)
     return tuned
 
