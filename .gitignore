@@ -7,6 +7,9 @@ data/
 .claude/*
 !.claude/settings.json
 
+# Local secrets
+.admin-token
+
 # Audio files — too large for git
 test_tracks/*.wav
 test_tracks/*.mp3
