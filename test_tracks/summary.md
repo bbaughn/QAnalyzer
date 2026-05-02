@@ -1,21 +1,21 @@
 # Test corpus accuracy
 
-Last updated: 2026-05-01 — 36 tracks evaluated.
+Last updated: 2026-05-01 — 37 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 25 | 34 | 73.5% |
-| Key — end (root + mode) | 26 | 34 | 76.5% |
-| Key — all four | 25 | 34 | 73.5% |
+| Key — start (root + mode) | 26 | 35 | 74.3% |
+| Key — end (root + mode) | 27 | 35 | 77.1% |
+| Key — all four | 26 | 35 | 74.3% |
 | BPM (start + end) | 30 | 33 | 90.9% |
-| Tuning (start + end) | 34 | 34 | 100.0% |
-| no_drums | 36 | 36 | 100.0% |
-| swing | 35 | 36 | 97.2% |
-| bars_percussion | 28 | 36 | 77.8% |
+| Tuning (start + end) | 35 | 35 | 100.0% |
+| no_drums | 37 | 37 | 100.0% |
+| swing | 36 | 37 | 97.3% |
+| bars_percussion | 29 | 37 | 78.4% |
 | no_key | 4 | 4 | 100.0% |
-| no_tempo | 2 | 2 | 100.0% |
+| no_tempo | 3 | 3 | 100.0% |
 
 ## Failing tracks
 
