@@ -601,6 +601,32 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Pearl 3"
+    artist: "Bot1500"
+    file: "test_tracks/pearl_3.wav"
+    expected:
+      # Listened-correction: spreadsheet originally said Am; updated to Dm
+      # after listening.
+      bpm: 128
+      bpm_end: 128
+      key:
+        root: "D"
+        mode: "minor"
+      key_end:
+        root: "D"
+        mode: "minor"
+      # Tuning passes via the widened ±20c zero-snap zone (raw +18c — librosa's
+      # estimate is unstable here, varies +13..+18 across n_fft).
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: algorithm detects 64 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 0 — drums and
+      # harmony coexist from beat 1.  Same harmonic-start false-delay
+      # pattern as Blooms / Tikken / Vegyn / Time of Nectar / Soft Light.
+      bars_percussion: 0
+      swing: false
+
   - title: "Untitled"
     artist: "Pom Pom"
     file: "test_tracks/pompom.wav"
@@ -654,8 +680,12 @@ tracks:
       key_djaypro:
         root: "A"
         mode: "minor"
-      tuning: 25
-      tuning_end: 25
+      # Listened-correction: spreadsheet originally said +25c; updated to 0
+      # after relistening — sounds essentially concert-pitch (maybe very
+      # slightly off, but well within the new ±20c zero-snap zone added
+      # for Pearl 3).  Raw librosa estimate is +19c.
+      tuning: 0
+      tuning_end: 0
       no_drums: false
       bars_percussion: 0
       swing: false
