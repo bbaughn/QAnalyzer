@@ -227,6 +227,10 @@ def ingest_source(
         meta_cache_path = _youtube_metadata_cache_path(source)
 
         downloaded = job_dir / "source.%(ext)s"
+        # Don't post-process to WAV here: that inflates ~20 MB of m4a/opus
+        # into ~200 MB of PCM on disk before normalize even starts, which
+        # blew the Railway volume on long tracks (job dqLuWSIT8cg, ENOSPC
+        # mid-mux). _normalize_to_wav reads the compressed source directly.
         attempts = [
             yt_dlp_prefix + [
                 "--no-update",
@@ -235,9 +239,6 @@ def ingest_source(
                 "bestaudio[ext=m4a]/bestaudio/best",
                 "--extractor-args",
                 "youtube:player_client=android,web",
-                "-x",
-                "--audio-format",
-                "wav",
                 "-o",
                 str(downloaded),
                 source,
@@ -247,9 +248,6 @@ def ingest_source(
                 "--no-playlist",
                 "-f",
                 "bestaudio/best",
-                "-x",
-                "--audio-format",
-                "wav",
                 "-o",
                 str(downloaded),
                 source,
