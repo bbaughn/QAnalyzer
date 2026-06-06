@@ -130,19 +130,35 @@ function extractVideoId(url) {
   } catch { return url; }
 }
 
+function fmtAge(hours) {
+  if (hours == null) return '';
+  if (hours < 1) return Math.round(hours * 60) + 'm ago';
+  if (hours < 24) return Math.round(hours) + 'h ago';
+  return Math.round(hours / 24) + 'd ago';
+}
+
 async function refresh() {
   try {
-    const [debug, jobs] = await Promise.all([
+    const [debug, jobs, cookiesStat] = await Promise.all([
       api('GET', '/admin/debug'),
       api('GET', '/admin/jobs'),
+      api('GET', '/admin/cookies-status').catch(() => null),
     ]);
+
+    const ct = cookiesStat?.upload_target;
+    const cookiesExists = ct ? ct.exists : debug.cookies?.exists;
+    const cookiesAge = ct?.age_hours != null ? fmtAge(ct.age_hours) : '';
+    const cookiesLabel = cookiesExists
+      ? (cookiesAge ? `Yes (${cookiesAge})` : 'Yes')
+      : 'No';
+    const cookiesUrl = '/admin/cookies-status?token=' + encodeURIComponent(getToken());
 
     const info = $('#debugInfo');
     info.innerHTML = `
       <span>Version: <strong>${debug.app_version || '?'}</strong></span>
       <span>yt-dlp: <strong>${debug['yt-dlp']?.version || 'N/A'}</strong></span>
       <span>Node: <strong>${debug.node?.version || 'N/A'}</strong></span>
-      <span>Cookies: <strong>${debug.cookies?.exists ? 'Yes' : 'No'}</strong></span>
+      <span>Cookies: <a href="${cookiesUrl}" target="_blank" style="color:#60a5fa;text-decoration:none"><strong>${cookiesLabel}</strong></a></span>
       <span>Disk: <strong>${debug.disk_usage || '?'}</strong></span>
     `;
 
