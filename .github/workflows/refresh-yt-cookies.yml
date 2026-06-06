@@ -1,0 +1,61 @@
+name: Refresh YouTube cookies
+
+# Daily job: load saved Playwright session, hit youtube.com to renew it,
+# export cookies.txt, push to /admin/upload-cookies on Railway.
+#
+# Required GitHub Actions secrets:
+#   YT_STORAGE_STATE_B64    base64 of data/tmp/yt_storage_state.json
+#                           (produced by scripts/yt_login_local.py)
+#   QANALYZER_URL           https://qanalyzer-production.up.railway.app
+#   QANALYZER_ADMIN_TOKEN   same value as the local .admin-token file
+
+on:
+  schedule:
+    - cron: '15 9 * * *'   # 09:15 UTC daily
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Playwright + Chromium
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'playwright>=1.49,<2'
+          python -m playwright install --with-deps chromium
+
+      - name: Refresh cookies from saved session
+        env:
+          YT_STORAGE_STATE_B64: ${{ secrets.YT_STORAGE_STATE_B64 }}
+        run: python scripts/refresh_yt_cookies.py --out cookies.txt
+
+      - name: Upload cookies to QAnalyzer
+        env:
+          QANALYZER_URL: ${{ secrets.QANALYZER_URL }}
+          ADMIN_TOKEN: ${{ secrets.QANALYZER_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${QANALYZER_URL:?missing}"
+          : "${ADMIN_TOKEN:?missing}"
+          http_code=$(curl -sS -o response.json -w '%{http_code}' \
+            -X POST \
+            -F "file=@cookies.txt" \
+            "${QANALYZER_URL}/admin/upload-cookies?token=${ADMIN_TOKEN}")
+          echo "HTTP ${http_code}"
+          cat response.json
+          test "${http_code}" = "200"
+
+      - name: Verify cookie freshness on server
+        env:
+          QANALYZER_URL: ${{ secrets.QANALYZER_URL }}
+          ADMIN_TOKEN: ${{ secrets.QANALYZER_ADMIN_TOKEN }}
+        run: |
+          curl -sS "${QANALYZER_URL}/admin/cookies-status?token=${ADMIN_TOKEN}" \
+            | python -m json.tool

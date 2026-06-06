@@ -290,3 +290,30 @@ async def upload_cookies(file: UploadFile, token: str = "") -> dict:
     content = await file.read()
     cookies_path.write_bytes(content)
     return {"ok": True, "path": str(cookies_path), "size": len(content)}
+
+
+@app.get("/admin/cookies-status")
+def cookies_status(token: str = "") -> dict:
+    _require_admin(token)
+    import time
+    env_path = os.environ.get("YTDLP_COOKIES_FILE", "")
+    upload_path = str(settings.storage_root.parent / "cookies.txt")
+    targets = {"YTDLP_COOKIES_FILE": env_path, "upload_target": upload_path}
+    info: dict = {"paths": targets}
+    for label, p in targets.items():
+        if not p:
+            info[label] = {"set": False}
+            continue
+        path = Path(p)
+        if not path.exists():
+            info[label] = {"set": True, "exists": False}
+            continue
+        st = path.stat()
+        info[label] = {
+            "set": True,
+            "exists": True,
+            "size": st.st_size,
+            "mtime": st.st_mtime,
+            "age_hours": round((time.time() - st.st_mtime) / 3600.0, 2),
+        }
+    return info
