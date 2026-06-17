@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
+from limits import parse
+from limits.storage import MemoryStorage
+from limits.strategies import MovingWindowRateLimiter
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -16,6 +20,20 @@ from app.services.progress import read_progress
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 UI_FILE = Path(__file__).resolve().parent / "static" / "index.html"
 ADMIN_FILE = Path(__file__).resolve().parent / "static" / "admin.html"
+
+# In-memory moving-window limiter. State is per-process and lost on
+# redeploy — fine for abuse mitigation; not strict accounting.
+_ANALYZE_RATE_LIMITER = MovingWindowRateLimiter(MemoryStorage())
+_ANALYZE_RATE_LIMIT = parse("100/5 minutes")
+
+
+def _client_ip(request: Request) -> str:
+    # Railway terminates TLS at its edge, so request.client.host is the
+    # proxy. Use the first X-Forwarded-For hop instead.
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def get_db():
@@ -42,7 +60,11 @@ def index() -> FileResponse:
 
 
 @app.post("/v1/analyze", response_model=AnalyzeSubmissionResponse)
-def submit_analysis(payload: AnalyzeRequest, db: Session = Depends(get_db)) -> AnalyzeSubmissionResponse:
+def submit_analysis(
+    request: Request,
+    payload: AnalyzeRequest,
+    db: Session = Depends(get_db),
+) -> AnalyzeSubmissionResponse:
     from app.models import Job, JobStatus
     # Return existing succeeded job if one exists for this source with same analyzer version
     existing = (
@@ -57,6 +79,18 @@ def submit_analysis(payload: AnalyzeRequest, db: Session = Depends(get_db)) -> A
     )
     if existing:
         return AnalyzeSubmissionResponse(job_id=existing.id, status="succeeded")
+
+    # Rate-limit only new-job creations so re-submitting a cached URL never 429s.
+    ip = _client_ip(request)
+    if not _ANALYZE_RATE_LIMITER.hit(_ANALYZE_RATE_LIMIT, "analyze", ip):
+        reset, _remaining = _ANALYZE_RATE_LIMITER.get_window_stats(_ANALYZE_RATE_LIMIT, "analyze", ip)
+        retry_after = max(1, int(reset - time.time()))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded (100 new jobs per 5 minutes per IP). Retry in {retry_after}s.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     repo = JobRepository(db)
     job = repo.create_job(
         source_type=payload.source_type,

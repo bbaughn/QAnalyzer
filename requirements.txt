@@ -8,6 +8,7 @@ librosa==0.10.2.post1
 numba==0.59.1
 yt-dlp>=2025.08.27
 python-multipart==0.0.20
+limits>=3.0,<5
 pytest==8.4.1
 # MIDI-assisted key detection — runs Basic-Pitch (ONNX path only, TF imported
 # lazily and never reached at runtime).  setuptools<81 because resampy (a
