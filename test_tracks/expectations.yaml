@@ -416,6 +416,24 @@ tracks:
       bars_percussion: 24
       swing: false
 
+  - title: "L.E.V.E.L"
+    artist: "Emil Rottmayer"
+    file: "test_tracks/level.wav"
+    expected:
+      bpm: 114
+      bpm_end: 114
+      key:
+        root: "C"
+        mode: "minor"
+      key_end:
+        root: "C"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 1
+      swing: false
+
   - title: "Lindwurm"
     artist: "Todd Terje"
     file: "test_tracks/lindwurm.wav"
@@ -792,6 +810,24 @@ tracks:
         mode: "mixolydian"
       key_djaypro:
         root: "D"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
+  - title: "Star Cycles"
+    artist: "Gilbert"
+    file: "test_tracks/star_cycles.wav"
+    expected:
+      bpm: 128
+      bpm_end: 128
+      key:
+        root: "E"
+        mode: "minor"
+      key_end:
+        root: "E"
         mode: "minor"
       tuning: 0
       tuning_end: 0

@@ -1722,6 +1722,39 @@ def _find_harmonic_start(
     idx = min(candidates) if candidates else 0
     start_idx = max(0, idx)
 
+    # Bar-snap refinement: if the bar containing start_idx is a flat drone
+    # (only 1 distinct dominant pitch class across all 4 beats AND extremely
+    # low attack/sustain), advance to the next bar boundary.  Catches tracks
+    # where the 8-beat scan window picked up chroma variety from its later
+    # beats while its opening bar is actually a sustained tone at a single
+    # pitch.  L.E.V.E.L (Emil Rottmayer) is the canonical case: bar 1 is a
+    # pure B drone (atk ~0.15) but bar 2 has F/C/G melodic motion.
+    #
+    # The atk gate (mean atk < atk_threshold × 0.25, same "extremely low"
+    # threshold pass 0 uses for the drone-rescue) is what distinguishes a
+    # true sustained drone from a rhythmically-articulated held chord like
+    # Ghost of Akina (G# tonic dominates every bar but atk ~0.95) or Lowride
+    # (alternating C/D chords, atk ~1.0).  Both would be wrongly snapped past
+    # without this gate.
+    beats_per_bar = 4
+    n_cols = chroma_sync.shape[1]
+    drone_atk_max = atk_threshold * 0.25
+    max_snaps = (n_cols // beats_per_bar) + 1
+    for _ in range(max_snaps):
+        bar_start = (start_idx // beats_per_bar) * beats_per_bar
+        bar_end = bar_start + beats_per_bar
+        if bar_end > n_cols:
+            break
+        bar_dom = np.argmax(chroma_sync[:, bar_start:bar_end], axis=0)
+        if len(set(bar_dom.tolist())) >= 2:
+            break
+        if float(np.mean(atk_arr[bar_start:bar_end])) >= drone_atk_max:
+            break
+        next_bar = bar_start + beats_per_bar
+        if next_bar >= n_cols:
+            break
+        start_idx = next_bar
+
     start_time = float(beat_times[min(start_idx, beat_times.size - 1)])
     start_conf = float(np.mean(tonal_conf_arr[start_idx : start_idx + consecutive]))
 
