@@ -1838,7 +1838,7 @@ def _percussion_presence(
     # Empirical separation: jettison (no drums, staccato synth) p95=0.501;
     # all drums tracks p95 ≥ 0.620. Threshold at 0.55 gives clear headroom.
     #
-    # Three rescue paths bypass this gate when HPSS separation is unreliable:
+    # Four rescue paths bypass this gate when HPSS separation is unreliable:
     # 1. High-attack rescue: very large per-beat attack/sustain ratios mean real
     #    drum hits whose broadband energy confused HPSS.
     # 2. Tonal-kick rescue: extremely low perc_ratio_p95 (< 0.35) combined with
@@ -1857,6 +1857,14 @@ def _percussion_presence(
     #    beat_atk_p95 < 1.90 here, but that drifted by ~0.12 between local
     #    and deployed (Circadia: local 1.80 → deployed 1.92), missing the
     #    threshold on deployed and leaving no_drums broken in production.
+    # 4. Loud-onsets rescue: very loud transients (onset_p95 ≥ 4.5) combined
+    #    with moderate perc_ratio_p95 (≥ 0.45) signal kick-dominated tracks
+    #    where the main gate (perc_p95 < 0.55) misclassifies them.  Valeria
+    #    303 (Uf0) is the canonical case: onset_p95=5.91, perc_p95=0.524,
+    #    pe=0.200, atk_p95=1.896 — sits ε-close to every other gate's
+    #    threshold but cleanly above this rescue's onset+perc combination.
+    #    The closest no-drums track on the onset axis is Lindwurm (onset=6.71),
+    #    safely excluded by its perc_p95=0.412 (0.038 below the 0.45 floor).
     if perc_ratio_p95 is not None:
         _high_atk = beat_atk_p95 is not None and beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95
         _tonal_kick = perc_ratio_p95 < 0.35 and score > 0.55
@@ -1865,7 +1873,8 @@ def _percussion_presence(
             and perc_energy_ratio is not None and perc_energy_ratio < 0.20
             and perc_ratio_p95 >= 0.35
         )
-        if not (_high_atk or _tonal_kick or _soft_drums) and perc_ratio_p95 < 0.55:
+        _loud_onsets = onset_p95 >= 4.5 and perc_ratio_p95 >= 0.45
+        if not (_high_atk or _tonal_kick or _soft_drums or _loud_onsets) and perc_ratio_p95 < 0.55:
             low = True
             if level not in {"none", "low"}:
                 level = "low"
@@ -2257,6 +2266,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
                 and perc_energy_ratio < 0.20
                 and perc_ratio_p95 >= 0.35
             ),
+            "loud_onsets": bool(onset_p95 >= 4.5 and perc_ratio_p95 >= 0.45),
         },
     }
 

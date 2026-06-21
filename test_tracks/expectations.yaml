@@ -260,6 +260,24 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Gone"
+    artist: "Sau Poler"
+    file: "test_tracks/gone.wav"
+    expected:
+      bpm: 122
+      bpm_end: 122
+      key:
+        root: "Ab"
+        mode: "mixolydian"
+      key_end:
+        root: "Ab"
+        mode: "mixolydian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: true
+      bars_percussion: 0
+      swing: false
+
   - title: "Helix"
     artist: "Tracey"
     file: "test_tracks/helix.wav"
@@ -959,6 +977,31 @@ tracks:
       # harmonic-start detector, so it waits for the louder section and
       # reports an 8-bar over-count.
       bars_percussion: 16
+      swing: false
+
+  - title: "Valeria 303"
+    artist: "Uf0"
+    file: "test_tracks/valeria_303.wav"
+    expected:
+      bpm: 135
+      bpm_end: 135
+      # FAILING: algorithm detects Eb major; true key is F minor.
+      # Eb major and F minor share 6 of 7 PCs (F G Ab Bb C Eb), differing
+      # only on D vs Db.  Eb is the b7 of F minor and the tonic of Eb major;
+      # if D appears prominently (M3 of Eb major / nat-7 of F minor) the
+      # Krumhansl correlation tips to Eb major.  Likely an actual mode-family
+      # call, not a tonic-confusion bug.
+      key:
+        root: "F"
+        mode: "minor"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "F"
+        mode: "minor"
+      tuning: -25
+      tuning_end: -25
+      no_drums: false
+      bars_percussion: 0
       swing: false
 
   - title: "Sometimes I Feel Like I'm Ruining Songs"
