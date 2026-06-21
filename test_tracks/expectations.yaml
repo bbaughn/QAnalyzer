@@ -985,19 +985,27 @@ tracks:
     expected:
       bpm: 135
       bpm_end: 135
-      # FAILING: algorithm detects Eb major; true key is F minor.
-      # Eb major and F minor share 6 of 7 PCs (F G Ab Bb C Eb), differing
-      # only on D vs Db.  Eb is the b7 of F minor and the tonic of Eb major;
-      # if D appears prominently (M3 of Eb major / nat-7 of F minor) the
-      # Krumhansl correlation tips to Eb major.  Likely an actual mode-family
-      # call, not a tonic-confusion bug.
+      # FAILING: algorithm detects Eb major; true key is Ab major.
+      # Ab major and Eb major share 6 of 7 PCs (Eb F G Ab Bb C), differing
+      # only on Db (Ab major) vs D (Eb major).  Eb is the 5th of Ab major,
+      # so the algorithm is picking the dominant-as-tonic — a classic
+      # Krumhansl failure mode when the actual tonic isn't strongly
+      # emphasized in the chroma.  Neither distinguishing PC (D or Db)
+      # registers in the MIDI histogram, so the call is being made entirely
+      # on tonic-emphasis prior, which favors Eb (the 5th gets reinforced
+      # by every Ab-rooted chord's 5th tone).
+      # MIDI is also polluted: a tuned kick at D#2 (MIDI 39) plus sub-bass
+      # at F2 (MIDI 41) account for 85% of all weighted note duration.
+      # A blunt MIDI lo-cut at G2 or C3 doesn't help — see commit history,
+      # the filter regresses 7 other tracks by removing legitimate bass-
+      # tonic content from the histogram.
       key:
-        root: "F"
-        mode: "minor"
+        root: "Ab"
+        mode: "major"
       # FAILING: same as key (see above).
       key_end:
-        root: "F"
-        mode: "minor"
+        root: "Ab"
+        mode: "major"
       tuning: -25
       tuning_end: -25
       no_drums: false
