@@ -637,6 +637,35 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Our Levels"
+    artist: "Peder Mannerfelt"
+    file: "test_tracks/our_levels.wav"
+    expected:
+      bpm: 130
+      bpm_end: 130
+      # FAILING: algorithm detects Eb minor; true key is Eb major per
+      # tracks.csv.  Root matches; mode family is wrong.  Eb major and Eb
+      # minor share Eb/F/Bb but differ on the 3rd (G vs Gb) and 6th
+      # (C vs Cb) and 7th (D vs Db).  If the track emphasizes the b3
+      # (Gb) or the chromatic neighbors of the major-3rd, Krumhansl tips
+      # to minor.
+      key:
+        root: "Eb"
+        mode: "major"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "Eb"
+        mode: "major"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: algorithm detects 16 bars of percussion-only intro before
+      # harmonic content joins.  True bars_percussion is 0 per tracks.csv.
+      # Same harmonic-start false-delay pattern as Blooms / Burned Oak /
+      # Tikken / Vegyn / Time of Nectar / Soft Light.
+      bars_percussion: 0
+      swing: false
+
   - title: "Pearl 3"
     artist: "Bot1500"
     file: "test_tracks/pearl_3.wav"
@@ -753,20 +782,20 @@ tracks:
     expected:
       bpm: 113
       bpm_end: 113
-      # FAILING: algorithm detects Ab minor; true key is Db minor.  Ab is
+      # FAILING: algorithm detects Ab major; true key is Db major.  Ab is
       # the 5th of Db, so this is a classic Krumhansl dominant-as-tonic
       # confusion (same failure mode as Valeria 303).  Mode call matches.
-      # Note: user re-listened and revised both key and tuning — original
-      # tracks.csv said D minor at +25c, corrected to Db minor at -50c
-      # which makes the tuning pass and the key failure a clean 5th-as-
-      # tonic instead of an unexplained tritone confusion.
+      # Note: user re-listened twice and revised — original tracks.csv said
+      # D minor at +25c, then Db minor at -50c, finally Db major at -50c.
+      # The current state makes tuning + mode both pass; only the 5th-as-
+      # tonic root confusion remains.
       key:
         root: "Db"
-        mode: "minor"
+        mode: "major"
       # FAILING: same as key (see above).
       key_end:
         root: "Db"
-        mode: "minor"
+        mode: "major"
       tuning: -50
       tuning_end: -50
       no_drums: false

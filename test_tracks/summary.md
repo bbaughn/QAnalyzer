@@ -1,19 +1,19 @@
 # Test corpus accuracy
 
-Last updated: 2026-06-21 — 43 tracks evaluated.
+Last updated: 2026-06-21 — 44 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 30 | 41 | 73.2% |
-| Key — end (root + mode) | 31 | 41 | 75.6% |
-| Key — all four | 30 | 41 | 73.2% |
-| BPM (start + end) | 36 | 39 | 92.3% |
-| Tuning (start + end) | 41 | 41 | 100.0% |
-| no_drums | 43 | 43 | 100.0% |
-| swing | 42 | 43 | 97.7% |
-| bars_percussion | 34 | 43 | 79.1% |
+| Key — start (root + mode) | 31 | 42 | 73.8% |
+| Key — end (root + mode) | 32 | 42 | 76.2% |
+| Key — all four | 31 | 42 | 73.8% |
+| BPM (start + end) | 37 | 40 | 92.5% |
+| Tuning (start + end) | 42 | 42 | 100.0% |
+| no_drums | 44 | 44 | 100.0% |
+| swing | 43 | 44 | 97.7% |
+| bars_percussion | 34 | 44 | 77.3% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 3 | 3 | 100.0% |
 
@@ -29,6 +29,7 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Julia** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Maya Bay** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Ocean Chant** — bars_percussion
+- **Our Levels** — bars_percussion
 - **Pearl 3** — bars_percussion
 - **Untitled** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Seaside Special** — Key — start (root + mode), Key — end (root + mode), Key — all four

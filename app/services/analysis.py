@@ -86,6 +86,28 @@ def _key_from_chroma(chroma_vec: np.ndarray, constrain_root: int | None = None) 
     if best_mode == "locrian":
         best_mode = "minor"
 
+    # Major↔minor tiebreak: when both modes on the same root land within ε of
+    # each other (< 0.005), the Krumhansl correlation is mode-ambiguous and
+    # tiny noise-level differences decide the call arbitrarily.  Compare the
+    # chroma energy at the M3 vs b3 of the chosen root; whichever is stronger
+    # is the better mode call.  Our Levels (Peder Mannerfelt) is the
+    # canonical case: global Eb major and Eb minor sit at 0.9663 vs 0.9661
+    # (gap 0.0002), the per-window estimator flips nearly every window, and
+    # the collapsed call lands on whichever side had slightly more windows.
+    # Chroma G (9.4%) > Gb (8.0%) globally, matching the user's actual M3
+    # melody, so the M3-vs-b3 comparison correctly picks major.
+    if best_mode in ("major", "minor"):
+        other_mode = "minor" if best_mode == "major" else "major"
+        other_profile = next(p for n, p in _MODE_PROFILES_NORM if n == other_mode)
+        other_score = float(np.dot(chroma_norm, np.roll(other_profile, best_key_idx)))
+        if abs(best_score - other_score) < 0.005:
+            M3_idx = (best_key_idx + 4) % 12
+            b3_idx = (best_key_idx + 3) % 12
+            if best_mode == "minor" and chroma_vec[M3_idx] > chroma_vec[b3_idx]:
+                best_mode = "major"
+            elif best_mode == "major" and chroma_vec[b3_idx] > chroma_vec[M3_idx]:
+                best_mode = "minor"
+
     # The Krumhansl correlation cannot reliably distinguish minor from dorian
     # because the two modes share 6 of their 7 scale degrees.  The only
     # distinguishing note is the 6th: major (dorian) vs. lowered (minor).
