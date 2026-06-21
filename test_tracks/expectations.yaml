@@ -974,34 +974,32 @@ tracks:
     artist: "Uf0"
     file: "test_tracks/still_here.wav"
     expected:
-      # FAILING: algorithm detects 99 BPM; tracks.csv says 124.  Ratio
-      # 99/124 ≈ 0.80, not a simple 0.5x/0.66x/0.75x halftime confusion
-      # nor a clean polyrhythm ratio.  Could be a beat-tracker failure on
-      # this Uf0 track (similar artist as Valeria 303, same ballacid
-      # uploader), or the YouTube upload might be a different mastering
-      # than the user's source.
+      # FAILING: algorithm detects 99 BPM; true tempo is 124 (user-
+      # confirmed by ear — meter is clean 4/4 with snares on 2 and 4).
+      # Tempogram inspection shows 99.38 BPM as the strongest peak
+      # (energy 0.739), with 123.05 BPM appearing as the 9th-strongest
+      # peak (energy 0.518, ~70% of 99).  So 124 IS in the audio,
+      # librosa just sees 99 as a stronger periodicity.  Forcing
+      # start_bpm=124 at any tightness still snaps back to 99.38.
+      # Cause not yet diagnosed.  Ratio happens to be 4/5 but no
+      # musical evidence of a 5-against-4 feel.
       bpm: 124
       bpm_end: 124
-      # FAILING: algorithm detects Eb major; true key is C minor.  Eb
-      # major is the relative major of C minor — they share all 7 pitch
-      # classes, so this is the most common Krumhansl confusion mode.
-      # No way to distinguish from chroma alone; would need bassline
-      # or melody-tonic detection.
+      # FAILING: algorithm detects Eb major; true key is F minor (user-
+      # confirmed via re-listening).  Eb is the b7 of F minor, NOT a
+      # relative-major confusion (that would be Ab major).  Same pattern
+      # as Valeria 303: chroma shares 6 of 7 PCs between F minor and
+      # Eb major, and the algorithm picks Eb because it has more chroma
+      # weight than F.
       key:
-        root: "C"
+        root: "F"
         mode: "minor"
       # FAILING: same as key (see above).
       key_end:
-        root: "C"
+        root: "F"
         mode: "minor"
-      # FAILING: algorithm detects -50 cents; tracks.csv says -25.
-      # 25-cent gap is just outside the ±20c snap zone.  Same ballacid
-      # uploader as Valeria 303 (which gave -25 matching truth), so this
-      # specific track's upload may be pitched 25c flatter than the
-      # user's reference.
-      tuning: -25
-      # FAILING: same as tuning (see above).
-      tuning_end: -25
+      tuning: -50
+      tuning_end: -50
       no_drums: false
       bars_percussion: 0
       swing: false
