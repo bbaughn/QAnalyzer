@@ -112,6 +112,34 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "CIRCLONT6A"
+    artist: "Aphex Twin"
+    file: "test_tracks/circlont6a.wav"
+    expected:
+      bpm: 142
+      bpm_end: 142
+      # User-confirmed via re-listening: track modulates G minor → Bb minor
+      # → G minor.  tracks.csv records Bb minor (the middle section), but
+      # the crude key/key_end designation is technically correct as G minor
+      # both at start and end.  Our two-point key snapshot doesn't capture
+      # the modulation; that's a corpus-wide limitation, not specific to
+      # this track.
+      key:
+        root: "G"
+        mode: "minor"
+      key_end:
+        root: "G"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      # FAILING: algorithm detects swing; track is straight per tracks.csv.
+      # The "syrobonkus mix" has aggressive microtiming displacement and
+      # polyrhythmic glitch patterns that the offbeat-delay swing detector
+      # reads as consistent offbeat lateness.
+      swing: false
+
   - title: "Circadia"
     artist: "Tornado Wallace"
     file: "test_tracks/circadia.wav"
@@ -141,6 +169,40 @@ tracks:
       no_drums: false
       bars_percussion: 0
       swing: true
+
+  - title: "Dear CZ"
+    artist: "Olde Gods"
+    file: "test_tracks/dear_cz.wav"
+    expected:
+      bpm: 115
+      bpm_end: 115
+      # FAILING: algorithm detects Ab major; true key is D minor with
+      # heavy use of the blue note Ab (user-confirmed by re-listening).
+      # The algorithm has no special handling for blue notes: Ab dominates
+      # chroma (18.7%, vs A at 15.8% and D at only 7.1%) and Ab is the
+      # MIDI tonic at 43.4%, with D registering as the b5 (22.9%) — the
+      # classic Ab+D tritone locrian signature.  Top global Krumhansl
+      # candidate is Ab locrian (0.945), D minor doesn't crack the top 8.
+      # Detecting "D minor with a blue note" vs "Ab locrian" from chroma
+      # alone is essentially impossible — they share the same pitch
+      # collection.  Would need bassline/melody-tonic detection.
+      key:
+        root: "D"
+        mode: "minor"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "D"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: algorithm detects 24 bars of percussion-only intro; true
+      # bars_percussion is 0 per tracks.csv.  Another case of tuned
+      # percussion in the intro that's ambiguous between "pitched harmonic
+      # content" and "pure percussion" — the harmonic-start detector
+      # waits for unambiguously tonal material before declaring the entry.
+      bars_percussion: 0
+      swing: false
 
   - title: "Deflection"
     artist: "Emil Rottmayer"
@@ -908,6 +970,42 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Still Here"
+    artist: "Uf0"
+    file: "test_tracks/still_here.wav"
+    expected:
+      # FAILING: algorithm detects 99 BPM; tracks.csv says 124.  Ratio
+      # 99/124 ≈ 0.80, not a simple 0.5x/0.66x/0.75x halftime confusion
+      # nor a clean polyrhythm ratio.  Could be a beat-tracker failure on
+      # this Uf0 track (similar artist as Valeria 303, same ballacid
+      # uploader), or the YouTube upload might be a different mastering
+      # than the user's source.
+      bpm: 124
+      bpm_end: 124
+      # FAILING: algorithm detects Eb major; true key is C minor.  Eb
+      # major is the relative major of C minor — they share all 7 pitch
+      # classes, so this is the most common Krumhansl confusion mode.
+      # No way to distinguish from chroma alone; would need bassline
+      # or melody-tonic detection.
+      key:
+        root: "C"
+        mode: "minor"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "C"
+        mode: "minor"
+      # FAILING: algorithm detects -50 cents; tracks.csv says -25.
+      # 25-cent gap is just outside the ±20c snap zone.  Same ballacid
+      # uploader as Valeria 303 (which gave -25 matching truth), so this
+      # specific track's upload may be pitched 25c flatter than the
+      # user's reference.
+      tuning: -25
+      # FAILING: same as tuning (see above).
+      tuning_end: -25
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Subterano"
     artist: "Guy Contact"
     file: "test_tracks/subterano.wav"
@@ -1097,4 +1195,30 @@ tracks:
       # later and over-counting the percussion-only intro.  Fix would
       # require a majority (not all-or-nothing) consecutive check.
       bars_percussion: 4
+      swing: false
+
+  - title: "YMI"
+    artist: "Glitch"
+    file: "test_tracks/ymi.wav"
+    expected:
+      bpm: 121
+      bpm_end: 121
+      # FAILING: algorithm detects F minor; true key is Bb minor per
+      # tracks.csv.  F is the 5th of Bb — classic Krumhansl 5th-as-tonic
+      # confusion (same family as Valeria 303, Seaside Special).  Mode
+      # call matches.
+      key:
+        root: "Bb"
+        mode: "minor"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "Bb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      # FAILING: algorithm detects no_drums=true; track has drums per
+      # tracks.csv.  Likely another soft/electronic kick that slips
+      # below all four primary_score gates and rescue paths.
+      no_drums: false
+      bars_percussion: 0
       swing: false

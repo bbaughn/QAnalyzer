@@ -1,19 +1,19 @@
 # Test corpus accuracy
 
-Last updated: 2026-06-21 — 44 tracks evaluated.
+Last updated: 2026-06-21 — 48 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 31 | 42 | 73.8% |
-| Key — end (root + mode) | 32 | 42 | 76.2% |
-| Key — all four | 31 | 42 | 73.8% |
-| BPM (start + end) | 37 | 40 | 92.5% |
-| Tuning (start + end) | 42 | 42 | 100.0% |
-| no_drums | 44 | 44 | 100.0% |
-| swing | 43 | 44 | 97.7% |
-| bars_percussion | 34 | 44 | 77.3% |
+| Key — start (root + mode) | 32 | 46 | 69.6% |
+| Key — end (root + mode) | 33 | 46 | 71.7% |
+| Key — all four | 32 | 46 | 69.6% |
+| BPM (start + end) | 40 | 44 | 90.9% |
+| Tuning (start + end) | 45 | 46 | 97.8% |
+| no_drums | 48 | 48 | 100.0% |
+| swing | 46 | 48 | 95.8% |
+| bars_percussion | 37 | 48 | 77.1% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 3 | 3 | 100.0% |
 
@@ -21,7 +21,9 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 
 - **Blooms** — bars_percussion
 - **Burned Oak** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), bars_percussion
+- **CIRCLONT6A** — swing
 - **Circadia** — Key — start (root + mode), Key — end (root + mode), Key — all four
+- **Dear CZ** — Key — start (root + mode), Key — end (root + mode), Key — all four, bars_percussion
 - **Funky Shit** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Helix** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Ghost of Akina (Aya 2010 All At Once Remix)** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), swing
@@ -35,11 +37,13 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Seaside Special** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Soft Light** — bars_percussion
 - **Spirit in Tala** — BPM (start + end)
+- **Still Here** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), Tuning (start + end)
 - **Tikken** — bars_percussion
 - **Time of Nectar** — bars_percussion
 - **Tunnel Run** — bars_percussion
 - **Valeria 303** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Sometimes I Feel Like I'm Ruining Songs** — bars_percussion
+- **YMI** — Key — start (root + mode), Key — end (root + mode), Key — all four
 
 ---
 
