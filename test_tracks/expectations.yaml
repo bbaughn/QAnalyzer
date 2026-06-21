@@ -747,6 +747,32 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Seaside Special"
+    artist: "Fantastic Man"
+    file: "test_tracks/seaside_special.wav"
+    expected:
+      bpm: 113
+      bpm_end: 113
+      # FAILING: algorithm detects Ab minor; true key is Db minor.  Ab is
+      # the 5th of Db, so this is a classic Krumhansl dominant-as-tonic
+      # confusion (same failure mode as Valeria 303).  Mode call matches.
+      # Note: user re-listened and revised both key and tuning — original
+      # tracks.csv said D minor at +25c, corrected to Db minor at -50c
+      # which makes the tuning pass and the key failure a clean 5th-as-
+      # tonic instead of an unexplained tritone confusion.
+      key:
+        root: "Db"
+        mode: "minor"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "Db"
+        mode: "minor"
+      tuning: -50
+      tuning_end: -50
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Slios"
     artist: "Durante"
     file: "test_tracks/silos.wav"
