@@ -2039,6 +2039,20 @@ def _detect_tempo_correction_ratio(
     if e_32 / e_det >= tg_ratio_threshold_32:
         return 1.5
 
+    # Check 5/4 upward correction (detected is too slow by 5/4 factor).
+    # Catches the syncopated-kick spectral cancellation: when kicks land on
+    # "1 and an &" (any & — & of 2, & of 3 — falls at a half-quarter offset),
+    # the two-kick Fourier signature has X[k=4]=0, exactly cancelling the
+    # quarter-note pulse.  Strongest in-band tempogram peak becomes 99 BPM
+    # (= 124 × 4/5, the 2x harmonic of the 5/8-bar lag).  When the 1.25×
+    # peak has stronger energy than detected (ratio > 1.0), it's strong
+    # evidence detected is the slower harmonic of the true tempo.
+    # Corpus calibration: Still Here ratio=1.057, New Reality 1.091 trigger;
+    # Lotusing 0.791 and Feign 0.416 (both correctly at 124) stay below.
+    e_54 = _bpm_energy(detected_bpm * 1.25)
+    if e_54 / e_det >= 0.95:
+        return 1.25
+
     return 1.0
 
 

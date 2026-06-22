@@ -1,19 +1,19 @@
 # Test corpus accuracy
 
-Last updated: 2026-06-22 — 50 tracks evaluated, 1 skipped (no cached features).
+Last updated: 2026-06-22 — 54 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 32 | 48 | 66.7% |
-| Key — end (root + mode) | 32 | 48 | 66.7% |
-| Key — all four | 31 | 48 | 64.6% |
-| BPM (start + end) | 41 | 46 | 89.1% |
-| Tuning (start + end) | 47 | 48 | 97.9% |
-| no_drums | 49 | 50 | 98.0% |
-| swing | 47 | 50 | 94.0% |
-| bars_percussion | 39 | 50 | 78.0% |
+| Key — start (root + mode) | 34 | 52 | 65.4% |
+| Key — end (root + mode) | 34 | 52 | 65.4% |
+| Key — all four | 33 | 52 | 63.5% |
+| BPM (start + end) | 46 | 50 | 92.0% |
+| Tuning (start + end) | 51 | 52 | 98.1% |
+| no_drums | 53 | 54 | 98.1% |
+| swing | 50 | 54 | 92.6% |
+| bars_percussion | 40 | 54 | 74.1% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 3 | 3 | 100.0% |
 
@@ -25,6 +25,7 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **CIRCLONT6A** — swing
 - **Circadia** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Dear CZ** — Key — start (root + mode), Key — end (root + mode), Key — all four, bars_percussion
+- **Feign** — Key — start (root + mode), Key — end (root + mode), Key — all four, bars_percussion
 - **Flounder 202** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), Tuning (start + end), no_drums, swing
 - **Funky Shit** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Helix** — Key — start (root + mode), Key — end (root + mode), Key — all four
@@ -32,7 +33,9 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Incompleteness** — Key — end (root + mode), Key — all four
 - **Jettison** — Key — start (root + mode), Key — all four
 - **Julia** — Key — start (root + mode), Key — end (root + mode), Key — all four
+- **Lotusing** — Key — start (root + mode), Key — end (root + mode), Key — all four, swing, bars_percussion
 - **Maya Bay** — Key — start (root + mode), Key — end (root + mode), Key — all four
+- **New Reality** — bars_percussion
 - **Ocean Chant** — bars_percussion
 - **Our Levels** — bars_percussion
 - **Pearl 3** — bars_percussion
@@ -40,17 +43,13 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Seaside Special** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Soft Light** — bars_percussion
 - **Spirit in Tala** — BPM (start + end)
-- **Still Here** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end)
+- **Still Here** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Tikken** — bars_percussion
 - **Time of Nectar** — bars_percussion
 - **Tunnel Run** — bars_percussion
 - **Valeria 303** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Sometimes I Feel Like I'm Ruining Songs** — bars_percussion
 - **YMI** — Key — start (root + mode), Key — end (root + mode), Key — all four
-
-## Skipped (no cached features)
-
-- Stemmen
 
 ---
 
