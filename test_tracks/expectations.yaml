@@ -1,5 +1,29 @@
 tracks:
 
+  - title: "Affetto"
+    artist: "Stijn Sadée"
+    file: "test_tracks/affetto.wav"
+    expected:
+      bpm: 110
+      bpm_end: 110
+      # FAILING: algorithm detects Eb minor; true key is Gb major.
+      # Eb minor is the relative minor of Gb major — they share all 7
+      # pitch classes, so this is the most common Krumhansl confusion
+      # mode.  No way to distinguish from chroma alone; would need
+      # bassline or melody-tonic detection.
+      key:
+        root: "Gb"
+        mode: "major"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "Gb"
+        mode: "major"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Alpaca"
     artist: "Acado"
     file: "test_tracks/alpaca.wav"

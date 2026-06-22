@@ -11,6 +11,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "name=$(basename \"$PWD\"); osascript -e \"display notification \\\"$name\\\" with title \\\"Claude Code\\\"\""
+          }
+        ]
+      }
     ]
   }
 }
