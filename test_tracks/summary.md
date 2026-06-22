@@ -1,6 +1,6 @@
 # Test corpus accuracy
 
-Last updated: 2026-06-21 — 50 tracks evaluated.
+Last updated: 2026-06-22 — 50 tracks evaluated, 1 skipped (no cached features).
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
@@ -47,6 +47,10 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Valeria 303** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Sometimes I Feel Like I'm Ruining Songs** — bars_percussion
 - **YMI** — Key — start (root + mode), Key — end (root + mode), Key — all four
+
+## Skipped (no cached features)
+
+- Stemmen
 
 ---
 

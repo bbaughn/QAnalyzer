@@ -1086,6 +1086,24 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Stemmen"
+    artist: "Deltawerk"
+    file: "test_tracks/stemmen.wav"
+    expected:
+      bpm: 122
+      bpm_end: 122
+      key:
+        root: "Gb"
+        mode: "minor"
+      key_end:
+        root: "Gb"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Tikken"
     artist: "Polynation"
     file: "test_tracks/tikken.wav"
