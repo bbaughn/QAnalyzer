@@ -268,6 +268,38 @@ tracks:
       bars_percussion: 16
       swing: true
 
+  - title: "Flounder 202"
+    artist: "ESPRIT 空想"
+    file: "test_tracks/flounder_202.wav"
+    expected:
+      # FAILING: algorithm detects 118 BPM at start, 115 at end.  bpm_end
+      # passes; bpm (start) is 3 off due to a brief opening tempo segment.
+      # Previously was 58 (halftime), fixed by broad-tempogram suppression
+      # in _detect_tempo_correction_ratio.
+      bpm: 115
+      bpm_end: 115
+      key:
+        root: "E"
+        mode: "mixolydian"
+      # FAILING: algorithm detects E phrygian.  Root matches; mode is
+      # phrygian instead of mixolydian.  Previous state was D major (b7-
+      # as-tonic) before the bpm fix realigned chroma_sync.
+      key_end:
+        root: "E"
+        mode: "mixolydian"
+      # FAILING: algorithm detects 50 cents; tracks.csv says 25.  25-cent
+      # gap may be a YouTube re-encoding artifact or a different mastering.
+      tuning: 25
+      # FAILING: same as tuning (see above).
+      tuning_end: 25
+      # FAILING: algorithm detects no_drums=true; track has drums per
+      # tracks.csv (after a long drumless intro).  Vaporwave-style soft/
+      # lo-fi percussion likely slips below all four primary_score gates.
+      no_drums: false
+      bars_percussion: 0
+      # FAILING: algorithm detects swing=false; tracks.csv says true.
+      swing: true
+
   - title: "Funky Shit"
     artist: "Prodigy"
     file: "test_tracks/funkyshit.wav"
@@ -403,13 +435,18 @@ tracks:
     expected:
       no_drums: true
       no_tempo: true
-      # F major and C major share all pitch classes; either is a valid interpretation.
-      # Algorithm detects F major (F/C power chord, F comes first).
+      # F major and C major share all pitch classes; user prefers C (matches
+      # djay Pro).  Track is genuinely ambiguous; F was the original CSV value.
       key:
-        root: "F"
+        root: "C"
         mode: "major"
+      # FAILING: algorithm splits the track into two sections — C major
+      # first half, F major second half.  Since C and F major share all
+      # pitch classes, this is the same scale viewed from two tonics.
+      # Mode/root both reasonable; the section split is a side effect of
+      # ambient-track ambiguity.
       key_end:
-        root: "F"
+        root: "C"
         mode: "major"
       key_djaypro:
         root: "C"

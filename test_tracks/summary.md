@@ -1,19 +1,19 @@
 # Test corpus accuracy
 
-Last updated: 2026-06-21 — 48 tracks evaluated.
+Last updated: 2026-06-21 — 49 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 32 | 46 | 69.6% |
-| Key — end (root + mode) | 33 | 46 | 71.7% |
-| Key — all four | 32 | 46 | 69.6% |
-| BPM (start + end) | 40 | 44 | 90.9% |
-| Tuning (start + end) | 45 | 46 | 97.8% |
-| no_drums | 48 | 48 | 100.0% |
-| swing | 46 | 48 | 95.8% |
-| bars_percussion | 37 | 48 | 77.1% |
+| Key — start (root + mode) | 32 | 47 | 68.1% |
+| Key — end (root + mode) | 32 | 47 | 68.1% |
+| Key — all four | 31 | 47 | 66.0% |
+| BPM (start + end) | 40 | 45 | 88.9% |
+| Tuning (start + end) | 46 | 47 | 97.9% |
+| no_drums | 48 | 49 | 98.0% |
+| swing | 46 | 49 | 93.9% |
+| bars_percussion | 38 | 49 | 77.6% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 3 | 3 | 100.0% |
 
@@ -24,9 +24,11 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **CIRCLONT6A** — swing
 - **Circadia** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Dear CZ** — Key — start (root + mode), Key — end (root + mode), Key — all four, bars_percussion
+- **Flounder 202** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), Tuning (start + end), no_drums, swing
 - **Funky Shit** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Helix** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Ghost of Akina (Aya 2010 All At Once Remix)** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), swing
+- **Incompleteness** — Key — end (root + mode), Key — all four
 - **Jettison** — Key — start (root + mode), Key — all four
 - **Julia** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Maya Bay** — Key — start (root + mode), Key — end (root + mode), Key — all four
@@ -37,7 +39,7 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Seaside Special** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Soft Light** — bars_percussion
 - **Spirit in Tala** — BPM (start + end)
-- **Still Here** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), Tuning (start + end)
+- **Still Here** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end)
 - **Tikken** — bars_percussion
 - **Time of Nectar** — bars_percussion
 - **Tunnel Run** — bars_percussion

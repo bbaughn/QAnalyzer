@@ -2011,18 +2011,31 @@ def _detect_tempo_correction_ratio(
     if e_det <= 0:
         return 1.0
 
+    e_34 = _bpm_energy(detected_bpm * 0.75)
+    e_23 = _bpm_energy(detected_bpm * 0.667)
+    e_32 = _bpm_energy(detected_bpm * 1.5)
+
+    # Broad-tempogram suppression: when ALL three alternative ratios carry
+    # substantial energy (≥ 0.65 of detected), the tempogram has distributed
+    # peaks rather than a clear winner.  Any correction in this case is
+    # picking arbitrary periodicity; trust the original detection.
+    # Calibrated against the corpus: Flounder 202 (0.762/0.844/0.855) and
+    # To The Edge of the World (0.778/0.807/0.943) both fall above the 0.65
+    # floor on all three, while the genuinely-correctable tracks have at
+    # least one ratio well below: Burned Oak e_23=0.579, Lowride 0.382,
+    # Time of Nectar 0.241.
+    if e_34 / e_det >= 0.65 and e_23 / e_det >= 0.65 and e_32 / e_det >= 0.65:
+        return 1.0
+
     # Check 4/3 downward correction (detected is too fast).
     # Suppress if the track shows a 3/2 ambiguity signature: when the tempogram
     # has nearly equal energy at 2/3×detected (the true tempo for a 3/2-error
     # track), the candidate at 0.75×detected is a false positive caused by
     # broad tempogram peaks rather than a genuine 4/3 tracking error.
-    e_34 = _bpm_energy(detected_bpm * 0.75)
-    e_23 = _bpm_energy(detected_bpm * 0.667)
     if e_34 / e_det >= tg_ratio_threshold and e_23 / e_det < tg_ratio_threshold_32:
         return 0.75
 
     # Check 3/2 upward correction (detected is too slow)
-    e_32 = _bpm_energy(detected_bpm * 1.5)
     if e_32 / e_det >= tg_ratio_threshold_32:
         return 1.5
 
