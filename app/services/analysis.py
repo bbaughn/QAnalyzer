@@ -2078,19 +2078,41 @@ def extract_audio_features(path: str) -> dict:
     tempo, beat_frames = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop_length)
 
-    # Detect and correct 4/3 (downward) and 3/2 (upward) tempo tracking errors
+    # Detect and correct tempo tracking errors (4/3 down, 3/2 up, 5/4 up)
     # at extraction time so that chroma_sync is aligned to the true beat grid.
-    # After correction, detected_bpm≈true and neither candidate fires again,
+    # After correction, detected_bpm≈true and no candidate fires again,
     # so double-correction is naturally prevented.
     if beat_times.size >= 8:
         _extraction_corr = _detect_tempo_correction_ratio(onset_env, beat_times, sr, hop_length)
         if _extraction_corr != 1.0:
             _detected_bpm = 60.0 / float(np.median(np.diff(beat_times)))
-            _corrected_start_bpm = _detected_bpm * _extraction_corr
-            _, beat_frames = librosa.beat.beat_track(
-                onset_envelope=onset_env, sr=sr, hop_length=hop_length,
-                start_bpm=_corrected_start_bpm,
-            )
+            _corrected_target_bpm = _detected_bpm * _extraction_corr
+            if _extraction_corr == 1.25:
+                # 5/4 case: librosa's tempo tracker is sticky here because
+                # the original 99 BPM is closer to librosa's default 120 BPM
+                # center than the corrected 124 BPM is, so plain start_bpm=124
+                # still produces beat_times at 99.  Use a narrow Gaussian
+                # prior (scale=2) to force librosa to commit to the nearest
+                # tempo bin to the target, giving beat_times that correctly
+                # grid the audio at the true tempo — chroma_sync, RMS, and
+                # the harmonic-start detector then all operate on the right
+                # grid.  For 0.75 and 1.5 cases the original start_bpm path
+                # already shifts beat_times correctly, and the narrow prior
+                # caused regressions on tracks where the correction was a
+                # false positive that previously didn't move the grid (e.g.,
+                # Pygmy where 0.75 fires but the track's true tempo is at
+                # detected, not at corrected).
+                import scipy.stats as _stats
+                _prior = _stats.norm(loc=_corrected_target_bpm, scale=2.0)
+                _, beat_frames = librosa.beat.beat_track(
+                    onset_envelope=onset_env, sr=sr, hop_length=hop_length,
+                    prior=_prior,
+                )
+            else:
+                _, beat_frames = librosa.beat.beat_track(
+                    onset_envelope=onset_env, sr=sr, hop_length=hop_length,
+                    start_bpm=_corrected_target_bpm,
+                )
             beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=hop_length)
 
     print("[analysis] Computing onset detect...", flush=True)
