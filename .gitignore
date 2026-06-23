@@ -18,6 +18,8 @@ test_tracks/*.aac
 
 # Stem separation cache — large numpy data
 test_tracks/stem_cache/
+# Demucs stem output — large WAVs, regeneratable
+test_tracks/stems/
 
 # Misc data files
 test_tracks/*.csv

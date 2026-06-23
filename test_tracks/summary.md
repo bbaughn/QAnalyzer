@@ -11,7 +11,7 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 | Key — all four | 37 | 57 | 64.9% |
 | BPM (start + end) | 51 | 55 | 92.7% |
 | Tuning (start + end) | 56 | 57 | 98.2% |
-| no_drums | 56 | 59 | 94.9% |
+| no_drums | 55 | 59 | 93.2% |
 | swing | 54 | 59 | 91.5% |
 | bars_percussion | 44 | 59 | 74.6% |
 | no_key | 4 | 4 | 100.0% |
@@ -35,6 +35,7 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Incompleteness** — Key — end (root + mode), Key — all four
 - **Jettison** — Key — start (root + mode), Key — all four
 - **Julia** — Key — start (root + mode), Key — end (root + mode), Key — all four
+- **Lindwurm** — no_drums
 - **Lotusing** — Key — start (root + mode), Key — end (root + mode), Key — all four, swing, bars_percussion
 - **Maya Bay** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Motion On Bells** — no_drums

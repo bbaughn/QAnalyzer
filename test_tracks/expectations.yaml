@@ -471,6 +471,17 @@ tracks:
         mode: "mixolydian"
       tuning: 0
       tuning_end: 0
+      # Important borderline case: track does contain drums, but their
+      # total duration is short enough that DJs will need to treat this
+      # as a no_drums track (would kill the dancefloor).  This is the
+      # DJ-practical interpretation of no_drums — "don't pull this on
+      # the floor" — not strict "no percussion exists at all".
+      # Demucs drum-stem stats reflect the borderline nature: drum_rms=
+      # 0.045, drum_onset_p95=3.13 (vs has-drums tracks all > 7.5, and
+      # other no_drums tracks all < 1.7).  This track sits highest in
+      # the no_drums distribution; any threshold that catches it must
+      # avoid catching tracks with brief drum sections that still belong
+      # in DJ rotation.
       no_drums: true
       bars_percussion: 0
       swing: false
@@ -671,7 +682,11 @@ tracks:
         mode: "minor"
       tuning: 0
       tuning_end: 0
-      no_drums: true
+      # FAILING: algorithm detects no_drums=true.  User-corrected via
+      # listening to the Demucs-isolated drum stem — track does have
+      # drums (was the closest-to-drums "no_drums" track in earlier
+      # threshold-tuning, which we now know was a truth error).
+      no_drums: false
       bars_percussion: 0
       swing: false
 
