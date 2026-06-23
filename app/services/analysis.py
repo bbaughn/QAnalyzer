@@ -465,6 +465,7 @@ def _apply_segment_dorian_refinement(
     chroma_sync: np.ndarray,
     beat_times: np.ndarray,
     threshold: float = 1.02,
+    midi_pc_hist: list[float] | None = None,
 ) -> list[dict]:
     """Reclassify 'minor' segments to 'dorian' using aggregate chroma evidence.
 
@@ -478,19 +479,35 @@ def _apply_segment_dorian_refinement(
       - flute (B root):   Ab/G  = 1.041  → dorian  ✓
       - juno  (Eb root):  C/B   = 0.818  → stays minor ✓
       - funky (Ab root):  F/E   = 0.953  → stays minor ✓
+
+    When MIDI is available and clearly favors b6 (≥ 2× M6 and ≥ 1% weight),
+    skip the chroma-based flip — drum/overtone pollution can inflate chroma
+    M6 even though no actual M6 note is being played. Motion On Bells (Uf0)
+    is the canonical case: chroma M6/b6 = 1.45 (would flip to dorian) but
+    MIDI b6=19.4% / M6=0.00% (cleanly minor).
     """
+    midi_n: np.ndarray | None = None
+    if midi_pc_hist is not None:
+        _midi_arr = np.array(midi_pc_hist, dtype=float)
+        if _midi_arr.sum() > 0:
+            midi_n = _midi_arr / _midi_arr.sum()
     for seg in segments:
         if seg.get("mode") != "minor":
             continue
         key_idx = KEYS.index(seg["key"])
+        m6_idx = (key_idx + 9) % 12
+        b6_idx = (key_idx + 8) % 12
+        if midi_n is not None:
+            _b6_w = float(midi_n[b6_idx])
+            _M6_w = float(midi_n[m6_idx])
+            if _b6_w > _M6_w * 2.0 and _b6_w > 0.01:
+                continue  # MIDI clearly says minor; don't let chroma flip it
         # Collect beat indices within the segment time range.
         mask = (beat_times >= seg["start"]) & (beat_times <= seg["end"])
         beat_cols = np.where(mask)[0]
         if beat_cols.size == 0:
             continue
         seg_chroma = np.mean(chroma_sync[:, beat_cols], axis=1)
-        m6_idx = (key_idx + 9) % 12
-        b6_idx = (key_idx + 8) % 12
         if seg_chroma[m6_idx] > seg_chroma[b6_idx] * threshold:
             seg["mode"] = "dorian"
     return segments
@@ -833,6 +850,34 @@ def _segment_key_timeline(
                         for _seg in raw:
                             if _seg["key"] == _target_key:
                                 _seg["mode"] = "major"
+                elif _b3_w > _M3_w * 2.0 and _b3_w > 0.01:
+                    # Minor family confirmed: distinguish minor (b6) vs dorian
+                    # (M6) using MIDI.  Chroma alone can mis-detect dorian when
+                    # drum overtones inflate the M6 bin.  Motion On Bells (Uf0)
+                    # is the canonical case: MIDI shows C (b6) at 19.4% and C#
+                    # (M6) at 0.00%, but chroma puts C# at 11.3% vs C at 7.8%,
+                    # tripping the chroma dorian rescue.  When MIDI clearly
+                    # favors b6, override to minor.  (Also propagated into
+                    # _apply_segment_dorian_refinement so the downstream
+                    # refinement step doesn't re-flip back to dorian.)
+                    # The b3 > 2× M3 guard prevents this branch from firing on
+                    # major-family tracks where the major-family check above
+                    # didn't fire (e.g., MIDI b7/nat7 both present so neither
+                    # of mixolydian/major fires) — without the guard we'd
+                    # incorrectly force minor or dorian on actual mixolydian
+                    # tracks like Spirit in Tala.
+                    _b6_idx = (global_root_idx + 8) % 12
+                    _M6_idx = (global_root_idx + 9) % 12
+                    _b6_w = float(_midi_n[_b6_idx])
+                    _M6_w = float(_midi_n[_M6_idx])
+                    if _b6_w > _M6_w * 2.0 and _b6_w > 0.01:
+                        for _seg in raw:
+                            if _seg["key"] == _target_key:
+                                _seg["mode"] = "minor"
+                    elif _M6_w > _b6_w * 2.0 and _M6_w > 0.01:
+                        for _seg in raw:
+                            if _seg["key"] == _target_key:
+                                _seg["mode"] = "dorian"
 
     # When the P5-above correction fires, the constrained call forces root to
     # the corrected pitch class but the mode may come out as lydian (because
@@ -920,8 +965,8 @@ def _segment_key_timeline(
     # Refine minor→dorian using aggregate chroma within each segment.
     # Per-window detection is too noisy for this distinction; segment-mean
     # chroma gives a reliable m6/b6 ratio (see _apply_segment_dorian_refinement).
-    confirmed = _apply_segment_dorian_refinement(confirmed, chroma_sync, beat_times)
-    raw_coalesced = _apply_segment_dorian_refinement(raw_coalesced, chroma_sync, beat_times)
+    confirmed = _apply_segment_dorian_refinement(confirmed, chroma_sync, beat_times, midi_pc_hist=midi_pc_hist)
+    raw_coalesced = _apply_segment_dorian_refinement(raw_coalesced, chroma_sync, beat_times, midi_pc_hist=midi_pc_hist)
     return raw_coalesced, confirmed
 
 

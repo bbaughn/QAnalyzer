@@ -813,6 +813,30 @@ tracks:
       bars_percussion: 8
       swing: true
 
+  - title: "Motion On Bells"
+    artist: "Uf0"
+    file: "test_tracks/motion_on_bells.wav"
+    expected:
+      bpm: 119
+      bpm_end: 119
+      key:
+        root: "E"
+        mode: "minor"
+      key_end:
+        root: "E"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      # FAILING: algorithm detects no_drums=true; track has drums per
+      # tracks.csv.  Sits in the middle of the no-drums distribution on
+      # both perc_p95 (0.447) and onset_p95 (5.08), with atk_p95 (1.50)
+      # actually LOWER than no-drums tracks (Lindwurm 1.94, Jettison
+      # 1.75) — the drums are very softly produced.  Hard to fix without
+      # genuine regressions on other tracks.
+      no_drums: false
+      bars_percussion: 0
+      swing: false
+
   - title: "Nocturnal"
     artist: "Barker & Baumecker"
     file: "test_tracks/nocturnal.wav"
