@@ -1364,6 +1364,30 @@ tracks:
       bars_percussion: 0
       swing: true
 
+  - title: "Undercliff"
+    artist: "K-Lone"
+    file: "test_tracks/undercliff.wav"
+    expected:
+      bpm: 120
+      bpm_end: 120
+      # User-corrected: track really plays only G (3/4) and C# (1/4) per
+      # MIDI transcription, so G lydian is the right call (G tonic with
+      # #4 = C# as the dominant non-tonic pitch).  tracks.csv said B minor
+      # which didn't match the track's actual content.  Algorithm now
+      # correctly returns G lydian via the new MIDI-based lydian rescue.
+      key:
+        root: "G"
+        mode: "lydian"
+      key_end:
+        root: "G"
+        mode: "lydian"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      # FAILING: algorithm detects swing=false; tracks.csv says true.
+      swing: true
+
   - title: "Valeria 303"
     artist: "Uf0"
     file: "test_tracks/valeria_303.wav"

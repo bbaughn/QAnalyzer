@@ -807,7 +807,23 @@ def _segment_key_timeline(
                 _nat7_w = float(_midi_n[_nat7_idx])
                 _midi_major_family = _M3_w > _b3_w * 2.0 and _M3_w > 0.01
                 if _midi_major_family:
-                    if _b7_w > _nat7_w * 2.0 and _b7_w > 0.005:
+                    _4_idx = (global_root_idx + 5) % 12
+                    _sharp4_idx = (global_root_idx + 6) % 12
+                    _4_w = float(_midi_n[_4_idx])
+                    _sharp4_w = float(_midi_n[_sharp4_idx])
+                    if _sharp4_w > _4_w * 2.0 and _sharp4_w > 0.01:
+                        # Major 3rd present, #4 present, 4 absent → lydian.
+                        # Undercliff (K-Lone) is the canonical case: MIDI shows
+                        # G=61%, C#(=#4)=17%, C(=4)=3.4% — the track plays G
+                        # as tonic and C# as the dominant non-tonic pitch, the
+                        # classic lydian signature.  Chroma alone can't catch
+                        # this because drum/overtone pollution puts F (b7) above
+                        # F# (nat7) at 9.8% vs 7.5%, which would otherwise trip
+                        # the mixolydian rescue below.
+                        for _seg in raw:
+                            if _seg["key"] == _target_key:
+                                _seg["mode"] = "lydian"
+                    elif _b7_w > _nat7_w * 2.0 and _b7_w > 0.005:
                         # Major 3rd present, b7 present, nat7 absent → mixolydian
                         for _seg in raw:
                             if _seg["key"] == _target_key:

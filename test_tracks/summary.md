@@ -1,19 +1,19 @@
 # Test corpus accuracy
 
-Last updated: 2026-06-22 — 57 tracks evaluated.
+Last updated: 2026-06-22 — 58 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 36 | 55 | 65.5% |
-| Key — end (root + mode) | 36 | 55 | 65.5% |
-| Key — all four | 35 | 55 | 63.6% |
-| BPM (start + end) | 49 | 53 | 92.5% |
-| Tuning (start + end) | 54 | 55 | 98.2% |
-| no_drums | 55 | 57 | 96.5% |
-| swing | 53 | 57 | 93.0% |
-| bars_percussion | 42 | 57 | 73.7% |
+| Key — start (root + mode) | 37 | 56 | 66.1% |
+| Key — end (root + mode) | 37 | 56 | 66.1% |
+| Key — all four | 36 | 56 | 64.3% |
+| BPM (start + end) | 50 | 54 | 92.6% |
+| Tuning (start + end) | 55 | 56 | 98.2% |
+| no_drums | 56 | 58 | 96.6% |
+| swing | 53 | 58 | 91.4% |
+| bars_percussion | 43 | 58 | 74.1% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 3 | 3 | 100.0% |
 
@@ -50,6 +50,7 @@ Each row counts a track as passing only if **all** sub-checks in that category m
 - **Time of Nectar** — bars_percussion
 - **Tunnel Run** — bars_percussion
 - **Upiter** — Key — start (root + mode), Key — end (root + mode), Key — all four
+- **Undercliff** — swing
 - **Valeria 303** — Key — start (root + mode), Key — end (root + mode), Key — all four
 - **Sometimes I Feel Like I'm Ruining Songs** — bars_percussion
 - **YMI** — Key — start (root + mode), Key — end (root + mode), Key — all four
