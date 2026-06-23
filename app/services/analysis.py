@@ -2149,10 +2149,12 @@ def _compute_demucs_drum_onset_p95(audio_path: str) -> float | None:
     Threshold of 5.5 sits in the middle with 2.1 margin both ways.
     """
     try:
+        import time as _time
         import torch
         from demucs.pretrained import get_model
         from demucs.apply import apply_model
 
+        _t0 = _time.time()
         # Demucs trained at 44100; load stereo directly.
         y_st, sr = librosa.load(audio_path, sr=44100, mono=False)
         if y_st.ndim == 1:
@@ -2164,7 +2166,9 @@ def _compute_demucs_drum_onset_p95(audio_path: str) -> float | None:
         drums_idx = model.sources.index("drums")
         drums = out[0, drums_idx].mean(dim=0).cpu().numpy()
         onset = librosa.onset.onset_strength(y=drums, sr=sr, hop_length=512)
-        return float(np.percentile(onset, 95))
+        result = float(np.percentile(onset, 95))
+        print(f"[analysis] Demucs ran in {_time.time()-_t0:.1f}s", flush=True)
+        return result
     except Exception as _e:  # noqa: BLE001
         print(f"[analysis] Demucs fallback unavailable: {_e}", flush=True)
         return None

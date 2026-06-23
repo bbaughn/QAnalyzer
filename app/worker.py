@@ -192,6 +192,18 @@ def main() -> None:
 
     init_db()
 
+    # Preload Demucs model at startup so the first job that needs the
+    # borderline no_drums fallback doesn't pay the ~80MB download + import
+    # cost.  Skips silently if Demucs is not installed or disabled.
+    if settings.enable_demucs_fallback:
+        try:
+            from demucs.pretrained import get_model as _get_demucs
+            _t0 = time.time()
+            _ = _get_demucs("htdemucs")
+            print(f"[worker] Demucs htdemucs preloaded in {time.time()-_t0:.1f}s", flush=True)
+        except Exception as _e:  # noqa: BLE001
+            print(f"[worker] Demucs preload skipped: {_e}", flush=True)
+
     if args.once:
         process_one_job()
         return
