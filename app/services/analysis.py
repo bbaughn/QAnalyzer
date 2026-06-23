@@ -1895,6 +1895,7 @@ def _percussion_presence(
     perc_energy_ratio: float | None = None,
     perc_ratio_p95: float | None = None,
     beat_atk_p95: float | None = None,
+    demucs_drum_onset_p95: float | None = None,
 ) -> tuple[str, bool, float]:
     onset_p95 = float(np.percentile(onset_env, 95))
     if perc_energy_ratio is not None:
@@ -1962,7 +1963,18 @@ def _percussion_presence(
             and perc_ratio_p95 >= 0.35
         )
         _loud_onsets = onset_p95 >= 3.5 and perc_ratio_p95 >= 0.45
-        if not (_high_atk or _tonal_kick or _soft_drums or _loud_onsets) and perc_ratio_p95 < 0.55:
+        # 5. Demucs-stem rescue: only computed at extraction time when fast
+        #    metrics already put the track in the borderline zone (no_drums
+        #    candidate AND onset_p95 >= 4 — likely kick-dominated track that
+        #    HPSS missed).  When the isolated drum stem has substantial
+        #    onset activity, we trust that over the fast-metric verdict.
+        #    Motion On Bells (Uf0) is the canonical case: existing gates
+        #    all miss, but Demucs drum stem onset_p95 = 8.06 → clearly drums.
+        _demucs_drums = (
+            demucs_drum_onset_p95 is not None
+            and demucs_drum_onset_p95 >= settings.demucs_drum_onset_threshold
+        )
+        if not (_high_atk or _tonal_kick or _soft_drums or _loud_onsets or _demucs_drums) and perc_ratio_p95 < 0.55:
             low = True
             if level not in {"none", "low"}:
                 level = "low"
@@ -2117,6 +2129,47 @@ def _detect_tempo_correction_ratio(
     return 1.0
 
 
+def _compute_demucs_drum_onset_p95(audio_path: str) -> float | None:
+    """Isolate drums via Demucs and return the drum stem's onset_p95.
+
+    Used as a borderline-only no_drums fallback — Demucs is heavy (~30s+
+    per track on CPU) so we only invoke it when existing fast metrics put
+    a track in the ambiguous zone.  Returns None if Demucs is unavailable
+    so the rest of the pipeline degrades gracefully.
+
+    Loads the audio file itself (rather than taking a numpy array param)
+    so this can be called after extract_audio_features' main `y` has been
+    freed to reclaim memory.
+
+    Empirical separation in the corpus:
+      has_drums truth: drum onset_p95 >= 7.59 (Lindwurm, Motion On Bells)
+      no_drums truth:  drum onset_p95 <= 3.13 (Gone is the warmest;
+                       Jettison/Slios/Channel 3/Incompleteness/Port Ana
+                       all < 1.7)
+    Threshold of 5.5 sits in the middle with 2.1 margin both ways.
+    """
+    try:
+        import torch
+        from demucs.pretrained import get_model
+        from demucs.apply import apply_model
+
+        # Demucs trained at 44100; load stereo directly.
+        y_st, sr = librosa.load(audio_path, sr=44100, mono=False)
+        if y_st.ndim == 1:
+            y_st = np.stack([y_st, y_st])
+        wav = torch.from_numpy(y_st).float()
+        model = get_model("htdemucs")
+        with torch.no_grad():
+            out = apply_model(model, wav.unsqueeze(0), split=True, progress=False)
+        drums_idx = model.sources.index("drums")
+        drums = out[0, drums_idx].mean(dim=0).cpu().numpy()
+        onset = librosa.onset.onset_strength(y=drums, sr=sr, hop_length=512)
+        return float(np.percentile(onset, 95))
+    except Exception as _e:  # noqa: BLE001
+        print(f"[analysis] Demucs fallback unavailable: {_e}", flush=True)
+        return None
+
+
 def extract_audio_features(path: str) -> dict:
     """Phase 1: load audio and run all expensive librosa computations.
 
@@ -2219,6 +2272,32 @@ def extract_audio_features(path: str) -> dict:
     gc.collect()
     print(f"[analysis] Feature extraction complete. mem={_mem_mb():.0f}MB", flush=True)
 
+    # Borderline-only Demucs fallback for no_drums detection.  When the
+    # existing fast metrics indicate the track would be classified as
+    # no_drums (low perc_ratio_p95) BUT also show high onset transients
+    # (onset_p95 >= 4), the algo's call is suspect — loud onsets without
+    # high HPSS perc_ratio often means kick-dominated tracks where HPSS
+    # routed real drums to the harmonic component.  Run Demucs only on
+    # these ambiguous cases to keep production cost low.
+    perc_ratio_p95_eager = float(np.percentile(percussive_ratio_per_frame, 95))
+    onset_p95_eager = float(np.percentile(onset_env, 95))
+    beat_atk_p95_eager = float(np.percentile(beat_attack_sustain, 95)) if beat_attack_sustain else 0.0
+    demucs_drum_onset_p95 = None
+    if settings.enable_demucs_fallback:
+        _would_be_no_drums = (
+            perc_ratio_p95_eager < 0.55
+            and not (beat_atk_p95_eager >= settings.perc_hpss_rescue_atk_p95)
+            and not (perc_ratio_p95_eager < 0.35 and (
+                0.5 * min(1.0, perc_energy_ratio / 0.7) + 0.5 * min(1.0, onset_p95_eager / 2.0)
+            ) > 0.55)
+            and not (onset_p95_eager >= 4.0 and perc_energy_ratio < 0.20 and perc_ratio_p95_eager >= 0.35)
+            and not (onset_p95_eager >= 3.5 and perc_ratio_p95_eager >= 0.45)
+        )
+        if _would_be_no_drums and onset_p95_eager >= 4.0:
+            print(f"[analysis] Borderline no_drums — running Demucs (onset_p95={onset_p95_eager:.2f}, perc_p95={perc_ratio_p95_eager:.3f})...", flush=True)
+            demucs_drum_onset_p95 = _compute_demucs_drum_onset_p95(path)
+            print(f"[analysis] Demucs drum_onset_p95={demucs_drum_onset_p95}", flush=True)
+
     return {
         "sr": int(sr),
         "hop_length": hop_length,
@@ -2234,6 +2313,7 @@ def extract_audio_features(path: str) -> dict:
         "global_tuning_cents": global_tuning_cents,
         "perc_energy_ratio": perc_energy_ratio,
         "midi_pc_hist": midi_pc_hist,
+        "demucs_drum_onset_p95": demucs_drum_onset_p95,
     }
 
 
@@ -2382,11 +2462,13 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
     beat_atk_p95 = float(np.percentile(beat_attack_sustain, 95))
     onset_p95 = float(np.percentile(onset_env, 95))
     primary_score = 0.5 * min(1.0, perc_energy_ratio / 0.7) + 0.5 * min(1.0, onset_p95 / 2.0)
+    demucs_drum_onset_p95 = features.get("demucs_drum_onset_p95")
     percussion_presence, low_percussion, percussion_conf = _percussion_presence(
         onset_env,
         perc_energy_ratio=perc_energy_ratio,
         perc_ratio_p95=perc_ratio_p95,
         beat_atk_p95=beat_atk_p95,
+        demucs_drum_onset_p95=demucs_drum_onset_p95,
     )
     _ = percussion_presence, percussion_conf
     percussion_debug = {
@@ -2395,6 +2477,7 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
         "perc_ratio_p95": perc_ratio_p95,
         "beat_atk_p95": beat_atk_p95,
         "primary_score": primary_score,
+        "demucs_drum_onset_p95": demucs_drum_onset_p95,
         "rescues": {
             "high_atk": bool(beat_atk_p95 >= settings.perc_hpss_rescue_atk_p95),
             "tonal_kick": bool(perc_ratio_p95 < 0.35 and primary_score > 0.55),
@@ -2404,6 +2487,10 @@ def interpret_features(features: dict, profile: str = "edm_v1") -> dict:
                 and perc_ratio_p95 >= 0.35
             ),
             "loud_onsets": bool(onset_p95 >= 3.5 and perc_ratio_p95 >= 0.45),
+            "demucs_drums": bool(
+                demucs_drum_onset_p95 is not None
+                and demucs_drum_onset_p95 >= settings.demucs_drum_onset_threshold
+            ),
         },
     }
 

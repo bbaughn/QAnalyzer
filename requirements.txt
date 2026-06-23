@@ -16,3 +16,8 @@ pytest==8.4.1
 basic-pitch==0.3.0
 onnxruntime==1.25.1
 setuptools<81
+# Demucs stem separation — borderline-only no_drums fallback (gated by
+# settings.enable_demucs_fallback).  torch / torchcodec are heavy deps but
+# Demucs is only invoked when fast metrics put a track in the ambiguous zone.
+demucs==4.0.1
+torchcodec==0.14.0

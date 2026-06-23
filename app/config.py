@@ -33,6 +33,8 @@ class Settings:
     no_key_min_winner_margin: float = float(os.getenv("NO_KEY_MIN_WINNER_MARGIN", "0.10"))
     no_key_min_argmax_frac_margin: float = float(os.getenv("NO_KEY_MIN_ARGMAX_FRAC_MARGIN", "0.25"))
     enable_midi_key_assist: bool = os.getenv("ENABLE_MIDI_KEY_ASSIST", "1") not in ("0", "false", "False")
+    enable_demucs_fallback: bool = os.getenv("ENABLE_DEMUCS_FALLBACK", "1") not in ("0", "false", "False")
+    demucs_drum_onset_threshold: float = float(os.getenv("DEMUCS_DRUM_ONSET_THRESHOLD", "5.5"))
 
 
 settings = Settings()

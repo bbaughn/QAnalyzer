@@ -682,11 +682,11 @@ tracks:
         mode: "minor"
       tuning: 0
       tuning_end: 0
-      # FAILING: algorithm detects no_drums=true.  User-corrected via
-      # listening to the Demucs-isolated drum stem — track does have
-      # drums (was the closest-to-drums "no_drums" track in earlier
-      # threshold-tuning, which we now know was a truth error).
       no_drums: false
+      # FAILING: algorithm detects 80 bars of percussion-only intro.
+      # Surfaced after the no_drums truth correction — was previously
+      # masked because no_drums=true forces bars_percussion=0.  True
+      # bars_percussion not user-verified yet.
       bars_percussion: 0
       swing: false
 
