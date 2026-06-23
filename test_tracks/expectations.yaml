@@ -1286,6 +1286,29 @@ tracks:
       bars_percussion: 16
       swing: false
 
+  - title: "Upiter"
+    artist: "Petar Dundov & Marc Romboy"
+    file: "test_tracks/upiter.wav"
+    expected:
+      bpm: 123
+      bpm_end: 123
+      # FAILING: algorithm detects G phrygian; true is G minor.  Root
+      # matches.  Phrygian and minor share 6 of 7 pitches (differ only
+      # on the 2nd: b2 vs natural 2).  Algorithm reads enough Ab content
+      # to tip the mode to phrygian.
+      key:
+        root: "G"
+        mode: "minor"
+      # FAILING: same as key (see above).
+      key_end:
+        root: "G"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      bars_percussion: 0
+      swing: true
+
   - title: "Valeria 303"
     artist: "Uf0"
     file: "test_tracks/valeria_303.wav"
