@@ -12,9 +12,10 @@ Key notation used in the CSV:
     d       dorian
     x       mixolydian
     p       phrygian
+    y       lydian
     l       minor  (locrian treated as minor, matching analyzer behavior)
 
-Examples: Cm → C minor, Bbd → Bb dorian, Ebm → Eb minor, G → G major
+Examples: Cm → C minor, Bbd → Bb dorian, Gy → G lydian, G → G major
 """
 
 import csv
@@ -30,6 +31,7 @@ _MODE_SUFFIX = {
     "d": "dorian",
     "x": "mixolydian",
     "p": "phrygian",
+    "y": "lydian",
     "l": "minor",  # locrian → minor
 }
 
