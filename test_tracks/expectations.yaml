@@ -24,6 +24,33 @@ tracks:
       bars_percussion: 0
       swing: false
 
+  - title: "Alles"
+    artist: "Computer Data"
+    file: "test_tracks/alles.wav"
+    expected:
+      # User-corrected: track is ~123.45 BPM by ear, so 123 is fine.
+      # Tracks.csv said 124 but algorithm-reported 123 matches the
+      # listened-truth more precisely.
+      bpm: 123
+      bpm_end: 123
+      # User-corrected: bass hammers E (algorithm-friendly tonic call),
+      # though the melody arguably puts E as the 2nd degree of D major.
+      # Algorithm's E minor is musically defensible — same scale pitches
+      # as D major (differ only on C vs C#) so chroma can't disambiguate.
+      key:
+        root: "E"
+        mode: "minor"
+      key_end:
+        root: "E"
+        mode: "minor"
+      tuning: 0
+      tuning_end: 0
+      no_drums: false
+      # FAILING: 8 bars of percussion-only intro detected.  Familiar
+      # harmonic-start false-delay pattern.
+      bars_percussion: 0
+      swing: false
+
   - title: "Alpaca"
     artist: "Acado"
     file: "test_tracks/alpaca.wav"

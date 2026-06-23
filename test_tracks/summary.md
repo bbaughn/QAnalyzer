@@ -1,25 +1,26 @@
 # Test corpus accuracy
 
-Last updated: 2026-06-22 — 55 tracks evaluated.
+Last updated: 2026-06-22 — 56 tracks evaluated.
 
 Each row counts a track as passing only if **all** sub-checks in that category match the expectation.  Tracks without an expectation in a category are excluded from that row's denominator.
 
 | Check | Pass | Total | % |
 |---|---|---|---|
-| Key — start (root + mode) | 34 | 53 | 64.2% |
-| Key — end (root + mode) | 34 | 53 | 64.2% |
-| Key — all four | 33 | 53 | 62.3% |
-| BPM (start + end) | 47 | 51 | 92.2% |
-| Tuning (start + end) | 52 | 53 | 98.1% |
-| no_drums | 54 | 55 | 98.2% |
-| swing | 51 | 55 | 92.7% |
-| bars_percussion | 41 | 55 | 74.5% |
+| Key — start (root + mode) | 35 | 54 | 64.8% |
+| Key — end (root + mode) | 35 | 54 | 64.8% |
+| Key — all four | 34 | 54 | 63.0% |
+| BPM (start + end) | 48 | 52 | 92.3% |
+| Tuning (start + end) | 53 | 54 | 98.1% |
+| no_drums | 55 | 56 | 98.2% |
+| swing | 52 | 56 | 92.9% |
+| bars_percussion | 41 | 56 | 73.2% |
 | no_key | 4 | 4 | 100.0% |
 | no_tempo | 3 | 3 | 100.0% |
 
 ## Failing tracks
 
 - **Affetto** — Key — start (root + mode), Key — end (root + mode), Key — all four
+- **Alles** — bars_percussion
 - **Blooms** — bars_percussion
 - **Burned Oak** — Key — start (root + mode), Key — end (root + mode), Key — all four, BPM (start + end), bars_percussion
 - **CIRCLONT6A** — swing
