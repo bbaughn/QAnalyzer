@@ -8,7 +8,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "EDM Analysis Service"
-    app_version: str = "0.3.0"
+    app_version: str = "0.3.1"
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/edm_analysis.db")
     storage_root: Path = Path(os.getenv("STORAGE_ROOT", "./data/storage"))
     temp_root: Path = Path(os.getenv("TEMP_ROOT", "./data/tmp"))
@@ -35,6 +35,7 @@ class Settings:
     enable_midi_key_assist: bool = os.getenv("ENABLE_MIDI_KEY_ASSIST", "1") not in ("0", "false", "False")
     enable_demucs_fallback: bool = os.getenv("ENABLE_DEMUCS_FALLBACK", "1") not in ("0", "false", "False")
     demucs_drum_onset_threshold: float = float(os.getenv("DEMUCS_DRUM_ONSET_THRESHOLD", "5.5"))
+    demucs_timeout_sec: int = int(os.getenv("DEMUCS_TIMEOUT_SEC", "180"))
 
 
 settings = Settings()

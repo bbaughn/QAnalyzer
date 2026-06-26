@@ -2129,33 +2129,19 @@ def _detect_tempo_correction_ratio(
     return 1.0
 
 
-def _compute_demucs_drum_onset_p95(audio_path: str) -> float | None:
-    """Isolate drums via Demucs and return the drum stem's onset_p95.
+def _demucs_inference_worker(audio_path: str, result_queue) -> None:
+    """Child-process body for _compute_demucs_drum_onset_p95.
 
-    Used as a borderline-only no_drums fallback — Demucs is heavy (~30s+
-    per track on CPU) so we only invoke it when existing fast metrics put
-    a track in the ambiguous zone.  Returns None if Demucs is unavailable
-    so the rest of the pipeline degrades gracefully.
-
-    Loads the audio file itself (rather than taking a numpy array param)
-    so this can be called after extract_audio_features' main `y` has been
-    freed to reclaim memory.
-
-    Empirical separation in the corpus:
-      has_drums truth: drum onset_p95 >= 7.59 (Lindwurm, Motion On Bells)
-      no_drums truth:  drum onset_p95 <= 3.13 (Gone is the warmest;
-                       Jettison/Slios/Channel 3/Incompleteness/Port Ana
-                       all < 1.7)
-    Threshold of 5.5 sits in the middle with 2.1 margin both ways.
+    Runs in a separate process so the parent can enforce a wall-clock
+    timeout via Process.terminate() — torch CPU inference on shared-vCPU
+    hosts can stall indefinitely and SIGALRM alone is unreliable when
+    inference is sitting inside C extensions.
     """
     try:
-        import time as _time
         import torch
         from demucs.pretrained import get_model
         from demucs.apply import apply_model
 
-        _t0 = _time.time()
-        # Demucs trained at 44100; load stereo directly.
         y_st, sr = librosa.load(audio_path, sr=44100, mono=False)
         if y_st.ndim == 1:
             y_st = np.stack([y_st, y_st])
@@ -2166,9 +2152,59 @@ def _compute_demucs_drum_onset_p95(audio_path: str) -> float | None:
         drums_idx = model.sources.index("drums")
         drums = out[0, drums_idx].mean(dim=0).cpu().numpy()
         onset = librosa.onset.onset_strength(y=drums, sr=sr, hop_length=512)
-        result = float(np.percentile(onset, 95))
-        print(f"[analysis] Demucs ran in {_time.time()-_t0:.1f}s", flush=True)
-        return result
+        result_queue.put(("ok", float(np.percentile(onset, 95))))
+    except Exception as _e:  # noqa: BLE001
+        result_queue.put(("err", str(_e)))
+
+
+def _compute_demucs_drum_onset_p95(audio_path: str) -> float | None:
+    """Isolate drums via Demucs and return the drum stem's onset_p95.
+
+    Used as a borderline-only no_drums fallback — Demucs is heavy (~30s+
+    per track on CPU) so we only invoke it when existing fast metrics put
+    a track in the ambiguous zone.  Returns None if Demucs is unavailable
+    so the rest of the pipeline degrades gracefully.
+
+    Runs in a separate process with a wall-clock timeout
+    (settings.demucs_timeout_sec, default 180s).  On Railway Hobby's
+    shared vCPU, torch inference can stall indefinitely — without the
+    subprocess kill we ate a 33-hour worker hang once.
+
+    Empirical separation in the corpus:
+      has_drums truth: drum onset_p95 >= 7.59 (Lindwurm, Motion On Bells)
+      no_drums truth:  drum onset_p95 <= 3.13 (Gone is the warmest;
+                       Jettison/Slios/Channel 3/Incompleteness/Port Ana
+                       all < 1.7)
+    Threshold of 5.5 sits in the middle with 2.1 margin both ways.
+    """
+    import multiprocessing as _mp
+    import time as _time
+
+    try:
+        # spawn (not fork) avoids fork-after-Cocoa-init crashes on macOS and
+        # also avoids inheriting the parent worker's torch state — each
+        # Demucs invocation gets a clean process, paying ~1-2s startup cost
+        # in exchange for robust timeout behavior.
+        ctx = _mp.get_context("spawn")
+        q = ctx.Queue()
+        proc = ctx.Process(target=_demucs_inference_worker, args=(audio_path, q))
+        _t0 = _time.time()
+        proc.start()
+        proc.join(timeout=settings.demucs_timeout_sec)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=5)
+            if proc.is_alive():
+                proc.kill()
+            print(f"[analysis] Demucs timed out after {settings.demucs_timeout_sec}s — aborted", flush=True)
+            return None
+        if not q.empty():
+            status, payload = q.get_nowait()
+            if status == "ok":
+                print(f"[analysis] Demucs ran in {_time.time()-_t0:.1f}s", flush=True)
+                return payload
+            print(f"[analysis] Demucs subprocess error: {payload}", flush=True)
+        return None
     except Exception as _e:  # noqa: BLE001
         print(f"[analysis] Demucs fallback unavailable: {_e}", flush=True)
         return None
